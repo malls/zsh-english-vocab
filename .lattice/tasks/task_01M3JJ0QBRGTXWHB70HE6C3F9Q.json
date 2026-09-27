@@ -1,0 +1,36 @@
+{
+  "acceptance_criteria": [],
+  "assigned_to": null,
+  "branch_links": [],
+  "comment_count": 0,
+  "complexity": "low",
+  "created_at": "2026-09-27T23:08:18Z",
+  "created_by": "agent:claude-opus-5-5",
+  "custom_fields": {},
+  "description": "Define data/words.tsv format and implement tools/lint-words with all checks; hook into the test run. Seed with ~20 entries. See SPEC.md \u00a74.",
+  "done_at": null,
+  "evidence_refs": [],
+  "id": "task_01M3JJ0QBRGTXWHB70HE6C3F9Q",
+  "last_event_id": "ev_01M3JJ0R3NF1FGBCYPBS4VCSZ0",
+  "last_status_changed_at": "2026-09-27T23:08:18Z",
+  "linked_files": [],
+  "priority": "high",
+  "relationships_out": [
+    {
+      "created_at": "2026-09-27T23:08:19Z",
+      "created_by": "agent:claude-opus-5-5",
+      "note": null,
+      "target_task_id": "task_01M3JJ0Q85FX96TA7QM53DGT01",
+      "type": "depends_on"
+    }
+  ],
+  "reopened_count": 0,
+  "schema_version": 1,
+  "short_id": "ZEV-3",
+  "status": "backlog",
+  "tags": null,
+  "title": "Word-list TSV format + linter",
+  "type": "task",
+  "updated_at": "2026-09-27T23:08:19Z",
+  "urgency": null
+}

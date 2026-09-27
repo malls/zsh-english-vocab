@@ -1,0 +1,36 @@
+{
+  "acceptance_criteria": [],
+  "assigned_to": null,
+  "branch_links": [],
+  "comment_count": 0,
+  "complexity": "medium",
+  "created_at": "2026-09-27T23:08:18Z",
+  "created_by": "agent:claude-opus-5-5",
+  "custom_fields": {},
+  "description": "Write entries in batches of 100-200 across difficulty tiers; each batch must pass the linter; flag needs-human for spot-check after first batch. See SPEC.md \u00a74.",
+  "done_at": null,
+  "evidence_refs": [],
+  "id": "task_01M3JJ0QF2Y9DQFZKDBX3W2ATS",
+  "last_event_id": "ev_01M3JJ0RED8VDE2P322G7V1QQV",
+  "last_status_changed_at": "2026-09-27T23:08:18Z",
+  "linked_files": [],
+  "priority": "medium",
+  "relationships_out": [
+    {
+      "created_at": "2026-09-27T23:08:19Z",
+      "created_by": "agent:claude-opus-5-5",
+      "note": null,
+      "target_task_id": "task_01M3JJ0QBRGTXWHB70HE6C3F9Q",
+      "type": "depends_on"
+    }
+  ],
+  "reopened_count": 0,
+  "schema_version": 1,
+  "short_id": "ZEV-4",
+  "status": "backlog",
+  "tags": null,
+  "title": "Generate 1000+ word entries",
+  "type": "task",
+  "updated_at": "2026-09-27T23:08:19Z",
+  "urgency": null
+}

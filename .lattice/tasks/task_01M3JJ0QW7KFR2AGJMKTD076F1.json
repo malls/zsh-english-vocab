@@ -1,0 +1,36 @@
+{
+  "acceptance_criteria": [],
+  "assigned_to": null,
+  "branch_links": [],
+  "comment_count": 0,
+  "complexity": "high",
+  "created_at": "2026-09-27T23:08:19Z",
+  "created_by": "agent:claude-opus-5-5",
+  "custom_fields": {},
+  "description": "Single porcelain=v2 call run in background via zle -F; markers per spec; stale-result handling; zunit tests for the parser using fixtures. See SPEC.md \u00a72.",
+  "done_at": null,
+  "evidence_refs": [],
+  "id": "task_01M3JJ0QW7KFR2AGJMKTD076F1",
+  "last_event_id": "ev_01M3JJ0RRX11NKNKW3BXG121P4",
+  "last_status_changed_at": "2026-09-27T23:08:19Z",
+  "linked_files": [],
+  "priority": "high",
+  "relationships_out": [
+    {
+      "created_at": "2026-09-27T23:08:20Z",
+      "created_by": "agent:claude-opus-5-5",
+      "note": null,
+      "target_task_id": "task_01M3JJ0QRTM75Q4Q6VZCAR5B44",
+      "type": "depends_on"
+    }
+  ],
+  "reopened_count": 0,
+  "schema_version": 1,
+  "short_id": "ZEV-8",
+  "status": "backlog",
+  "tags": null,
+  "title": "Theme: async detailed git status",
+  "type": "task",
+  "updated_at": "2026-09-27T23:08:20Z",
+  "urgency": null
+}
