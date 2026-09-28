@@ -1,0 +1,38 @@
+emulate -L zsh
+# _zev_vocab_cmd_fav [WORD...] -- "vocab fav": add the current word, or WORD
+# (words joined with spaces), to favorites, spelled as in the word list.
+setopt extended_glob
+local word canon tok
+integer rc=0
+if (( $# )); then
+  word="${(j: :)@}"
+elif _zev_vocab_current; then
+  word=$REPLY
+else
+  print -ru2 -- "vocab: no current word yet; run 'vocab next'"
+  return 1
+fi
+_zev_vocab_cmd_loadlist || return 1
+if ! _zev_vocab_lookup "$word" && ! _zev_vocab_lookup -i "$word"; then
+  print -ru2 -- "vocab: unknown word: $word"
+  return 1
+fi
+canon=$reply[1]
+_zev_vocab_cmd_lock || return 1
+tok=$REPLY
+{
+  if ! _zev_vocab_cmd_favread; then
+    print -ru2 -- "vocab: could not read $REPLY"
+    rc=1
+  elif (( ${reply[(I)(#i)${(b)canon}]} )); then
+    print -r -- "Already a favorite: $canon"
+  elif ! _zev_vocab_cmd_favwrite "$REPLY" "${reply[@]}" "$canon"; then
+    print -ru2 -- "vocab: could not write $REPLY"
+    rc=1
+  else
+    print -r -- "Added to favorites: $canon"
+  fi
+} always {
+  _zev_vocab_unlock $tok
+}
+return rc

@@ -1,0 +1,13 @@
+emulate -L zsh
+# _zev_vocab_record WORD -- write current and append to history. The caller
+# holds the lock. Leaves REPLY/reply untouched. rc 1 on write failure.
+local w=$1 d ts REPLY
+_zev_vocab_state_dir || return 1
+d=$REPLY
+zmodload zsh/datetime 2>/dev/null
+# Without zsh/datetime the timestamp field is left empty rather than malformed.
+strftime -s ts '%Y-%m-%dT%H:%M:%S%z' $EPOCHSECONDS 2>/dev/null &&
+  ts=${ts[1,-3]}:${ts[-2,-1]}
+{ print -r -- $w >| $d/current } 2>/dev/null || return 1
+{ print -r -- "$ts"$'\t'"$w" >> $d/history } 2>/dev/null || return 1
+return 0

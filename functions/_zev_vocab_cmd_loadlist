@@ -1,0 +1,17 @@
+emulate -L zsh
+# _zev_vocab_cmd_loadlist -- load the word list into the caller's
+# _zev_vocab_lines; REPLY=its path. Prints a "vocab: " error and returns 1 when
+# there is no usable list.
+if ! _zev_vocab_words_file; then
+  print -ru2 -- 'vocab: no word list (set ZEV_VOCAB_WORDS or load the plugin)'
+  return 1
+fi
+if [[ ! -r $REPLY || -d $REPLY ]]; then
+  print -ru2 -- "vocab: word list not found: $REPLY"
+  return 1
+fi
+if ! _zev_vocab_load; then
+  print -ru2 -- "vocab: word list is empty: $REPLY"
+  return 1
+fi
+return 0

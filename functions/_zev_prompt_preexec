@@ -1,0 +1,4 @@
+# _zev_prompt_preexec -- preexec hook: record when the command started.
+# '-' means zsh/datetime is unavailable (exit status is still shown, no timing).
+
+typeset -g _zev_prompt_cmd_start=${EPOCHREALTIME:--}

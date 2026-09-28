@@ -1,0 +1,5 @@
+#!/usr/bin/env zsh
+# Entry-count floor. ZEV-4 raises this to 1000 in the batch that crosses 1000 entries.
+min=1000
+cd "${0:A:h:h:h}" || exit 2
+exec tools/lint-words --min $min data/words.tsv

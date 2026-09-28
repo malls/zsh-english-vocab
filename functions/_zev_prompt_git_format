@@ -1,0 +1,78 @@
+# _zev_prompt_git_format HEAD OID AHEAD BEHIND STAGED UNSTAGED UNTRACKED
+#   CONFLICTED STASH -- build the prompt-ready git segment; result in REPLY.
+#
+# Pure: never forks, never prints, returns 0. Output order, single spaces,
+# depending on ZEV_GIT_STYLE:
+#
+#   dots (default):  NAME [⇡A] [⇣B] [●] [●] [≡N]
+#                    green dot (DOT_STAGED) = something staged; red dot
+#                    (DOT_DIRTY) = unstaged, untracked or conflicted
+#                    changes; no dot = clean
+#   counts:          NAME [⇡A] [⇣B] (✓ | [~C] [+S] [!U] [?T]) [≡N]
+#
+# NAME is HEAD in ZEV_GIT_BRANCH_COLOR, or the first 7 characters of OID in
+# ZEV_GIT_DETACHED_COLOR when HEAD is '(detached)'. A count of 0 is omitted.
+# Dots never show a count and there is no clean marker; in counts style the
+# clean marker replaces only the working-tree markers (~ + ! ?) when all four
+# counts are 0. Settings are read on every call (see
+# _zev_prompt_git_setup); a marker set to empty hides its category; a color is
+# used only if it is non-empty and consists of [[:alnum:]#]. Every name and
+# marker goes through _zev_prompt_escape. A count that is not a plain
+# non-negative integer is treated as 0.
+
+emulate -L zsh
+local name c m t k
+local -a n parts cats
+local -i i
+
+n=("$3" "$4" "$5" "$6" "$7" "$8" "$9")
+for (( i = 1; i <= 7; i++ )); do
+  [[ $n[i] == <-> ]] || n[i]=0
+done
+
+if [[ $1 == '(detached)' ]]; then
+  name=${2[1,7]}
+  c=${ZEV_GIT_DETACHED_COLOR-yellow}
+else
+  name=$1
+  c=${ZEV_GIT_BRANCH_COLOR-magenta}
+fi
+_zev_prompt_escape "$name"
+if [[ -n $c && $c != *[^[:alnum:]#]* ]]; then
+  parts=("%F{$c}$REPLY%f")
+else
+  parts=("$REPLY")
+fi
+
+# (category, default marker, default color, count) quadruples, in order.
+cats=(AHEAD '⇡' cyan $n[1] BEHIND '⇣' cyan $n[2])
+if [[ ${ZEV_GIT_STYLE:-dots} != counts ]]; then
+  # Dots show presence only (no count); clean shows nothing.
+  cats+=(DOT_STAGED '●' green $n[3] DOT_DIRTY '●' red $(( n[4] + n[5] + n[6] )))
+elif (( n[3] + n[4] + n[5] + n[6] == 0 )); then
+  cats+=(CLEAN '✓' green '')
+else
+  cats+=(CONFLICTED '~' red $n[6] STAGED '+' green $n[3]
+    UNSTAGED '!' yellow $n[4] UNTRACKED '?' blue $n[5])
+fi
+cats+=(STASH '≡' 8 $n[7])
+
+for k m c t in "${cats[@]}"; do
+  [[ $k == CLEAN ]] || (( t > 0 )) || continue
+  k=ZEV_GIT_${k}_MARKER
+  m=${(P)k-$m}
+  [[ -n $m ]] || continue
+  k=${k%_MARKER}_COLOR
+  c=${(P)k-$c}
+  [[ $k == ZEV_GIT_DOT_* ]] && t=
+  _zev_prompt_escape "$m"
+  t=$REPLY$t
+  if [[ -n $c && $c != *[^[:alnum:]#]* ]]; then
+    parts+=("%F{$c}$t%f")
+  else
+    parts+=("$t")
+  fi
+done
+
+REPLY=${(j: :)parts}
+return 0

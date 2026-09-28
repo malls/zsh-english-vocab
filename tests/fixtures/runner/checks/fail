@@ -1,0 +1,4 @@
+#!/bin/sh
+# Fixture check: always fails.
+echo boom
+exit 3

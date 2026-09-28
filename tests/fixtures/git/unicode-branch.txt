@@ -1,0 +1,4 @@
+# branch.oid d3541cdf6b285c27d5216c1c867e1ffd0a9cbb7b
+# branch.head фича/тест
+# branch.upstream origin/main
+# branch.ab +0 -0

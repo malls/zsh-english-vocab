@@ -1,0 +1,12 @@
+# _zev_prompt_git_precmd -- precmd hook (registered after _zev_prompt_precmd):
+# update the git segment and start a background job if needed. Without zle
+# (non-interactive shells, dumb pipes) it does nothing, because results could
+# never be delivered. Re-renders only if the segment changed (blanked on a
+# change of repo, or re-formatted after a settings change).
+
+emulate -L zsh
+[[ -o zle ]] || return 0
+local old=${_zev_prompt_git-}
+_zev_prompt_git_update
+[[ $_zev_prompt_git == "$old" ]] || _zev_prompt_render
+return 0

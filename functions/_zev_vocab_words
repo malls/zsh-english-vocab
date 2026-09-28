@@ -1,0 +1,5 @@
+emulate -L zsh
+# _zev_vocab_words -- reply=all words, in file order. rc 1 if none.
+(( $#_zev_vocab_lines )) || _zev_vocab_load || return 1
+reply=( ${_zev_vocab_lines%%$'\t'*} )
+(( $#reply ))

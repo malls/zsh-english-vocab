@@ -1,0 +1,44 @@
+# _zev_prompt_git_update -- per-prompt git logic in the interactive shell.
+# Never forks except through _zev_prompt_git_start; no output; returns 0.
+#
+#   - Not in a repo, ZEV_GIT_DISABLE=1, or no git on PATH: the segment is
+#     hidden, any in-flight job is discarded, nothing is spawned.
+#   - A different repo than the displayed one: the segment is blanked at once
+#     (never stale status for another repo), the in-flight job is discarded
+#     (fd unregistered and closed, generation bumped), and a new job starts.
+#   - The same repo: the last result is re-formatted (settings changes apply
+#     now) and kept until the new result arrives. If a job is still in flight,
+#     no new one is started; pending=1 makes the handler start one when the
+#     current result arrives (at most one job per repo in flight).
+
+emulate -L zsh
+local REPLY key= fd=$_zev_prompt_git_fd
+
+if [[ ${ZEV_GIT_DISABLE-} != 1 ]] && (( $+commands[git] )); then
+  _zev_prompt_git_root
+  key=$REPLY
+fi
+
+if [[ -z $key || $key != "$_zev_prompt_git_key" ]]; then
+  if [[ -n $fd ]]; then
+    zle -F $fd 2>/dev/null
+    { exec {fd}<&- } 2>/dev/null
+  fi
+  _zev_prompt_git_fd=
+  _zev_prompt_git_pending=0
+  (( ++_zev_prompt_git_gen ))
+  _zev_prompt_git_fields=()
+  _zev_prompt_git=
+  _zev_prompt_git_key=$key
+  [[ -n $key ]] || return 0
+elif (( ${#_zev_prompt_git_fields} )); then
+  _zev_prompt_git_format "${_zev_prompt_git_fields[@]}"
+  _zev_prompt_git=$REPLY
+fi
+
+if [[ -n $_zev_prompt_git_fd ]]; then
+  _zev_prompt_git_pending=1
+  return 0
+fi
+_zev_prompt_git_start
+return 0

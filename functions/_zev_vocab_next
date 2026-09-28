@@ -1,0 +1,48 @@
+emulate -L zsh
+# _zev_vocab_next -- pop the next word from the queue (refilling it with a
+# fresh shuffle when empty) under the lock and record it.
+# REPLY=word, reply=(word pos def ety). rc 0 ok, 1 no words or error,
+# 2 lock timeout.
+local d tok w
+local -a queue _zev_vocab_lines
+integer refilled=0 lrc
+_zev_vocab_load || return 1
+_zev_vocab_state_dir -c || return 1
+d=$REPLY
+_zev_vocab_lock $d
+lrc=$?
+(( lrc == 2 )) && return 2
+(( lrc )) && return 1
+tok=$REPLY
+{
+  _zev_vocab_readfile $d/queue && queue=( ${(f)REPLY} )
+  while :; do
+    if (( ! $#queue )); then
+      (( refilled )) && return 1
+      _zev_vocab_shuffle ${_zev_vocab_lines%%$'\t'*}
+      queue=( $reply )
+      refilled=1
+      # Don't repeat the last word across the cycle boundary.
+      if (( $#queue > 1 )) && _zev_vocab_current && [[ $REPLY == "$queue[1]" ]]; then
+        w=$queue[1]
+        queue[1]=$queue[-1]
+        queue[-1]=$w
+      fi
+    fi
+    w=$queue[1]
+    shift queue
+    [[ -n $w ]] || continue
+    # Words removed from the list are dropped here.
+    _zev_vocab_lookup $w && break
+  done
+  if (( $#queue )); then
+    { print -rl -- $queue >| $d/queue } 2>/dev/null || return 1
+  else
+    { : >| $d/queue } 2>/dev/null || return 1
+  fi
+  _zev_vocab_record $w
+  REPLY=$w
+} always {
+  _zev_vocab_unlock $tok
+}
+return 0

@@ -1,0 +1,20 @@
+emulate -L zsh
+# _zev_vocab_cmd_lock -- create the state dir and lock it; REPLY=token for
+# _zev_vocab_unlock. Prints a "vocab: " error and returns 1 on failure
+# (including a lock timeout).
+local d
+integer rc
+if ! _zev_vocab_state_dir -c; then
+  print -ru2 -- "vocab: could not create state directory $REPLY"
+  return 1
+fi
+d=$REPLY
+_zev_vocab_lock $d
+rc=$?
+(( rc == 0 )) && return 0
+if (( rc == 2 )); then
+  print -ru2 -- 'vocab: state is busy (another shell holds the lock); try again'
+else
+  print -ru2 -- "vocab: could not lock $d"
+fi
+return 1

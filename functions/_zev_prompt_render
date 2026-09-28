@@ -1,0 +1,75 @@
+# _zev_prompt_render -- build $_zev_prompt from the _zev_prompt_* globals and
+# ZEV_* settings, and point PROMPT at it. No arguments, no output, no forks;
+# always returns 0. Safe to call from a zle -F handler (the async git segment
+# calls it, then zle reset-prompt).
+#
+#   line 1: path  [git]  [took DURATION]  [CLOCK]   (segments joined by 2 spaces)
+#   line 2: [[N] ]PROMPT_CHAR followed by a space
+#
+# Injection safety: every untrusted string goes through _zev_prompt_escape
+# (control chars, % and, with prompt_bang, !). With prompt_subst on, PROMPT is
+# the literal reference ${_zev_prompt}; zsh does not re-scan a substituted value
+# for command substitutions. With prompt_subst off, PROMPT holds the value
+# itself and nothing is substituted.
+#
+# Residual risk (accepted): the choice uses the option snapshot taken by
+# _zev_prompt_precmd. If another precmd hook running after ours turns
+# prompt_subst on within the same prompt cycle, the literal value could be
+# substituted once; the next precmd re-snapshots the options.
+#
+# A color is used only if it is non-empty and consists of [[:alnum:]#] (names,
+# 0-255, #rrggbb); anything else means no color.
+
+emulate -L zsh
+local REPLY sep='  ' l1= l2= c t
+local -a segs
+local -i n=0 ex=${_zev_prompt_exit:-0}
+
+# Line 1: (color, text) pairs; the git segment is prompt-ready (no color).
+_zev_prompt_escape "${_zev_prompt_path-}"
+segs=("${ZEV_PATH_COLOR-blue}" "$REPLY")
+if [[ -n ${_zev_prompt_git-} ]]; then
+  segs+=('' "$_zev_prompt_git")
+fi
+if [[ -n ${_zev_prompt_duration-} ]]; then
+  _zev_prompt_escape "${ZEV_DURATION_PREFIX-took }$_zev_prompt_duration"
+  segs+=("${ZEV_DURATION_COLOR-yellow}" "$REPLY")
+fi
+if [[ -n ${_zev_prompt_clock-} ]]; then
+  _zev_prompt_escape "$_zev_prompt_clock"
+  segs+=("${ZEV_CLOCK_COLOR-8}" "$REPLY")
+fi
+for c t in "${segs[@]}"; do
+  (( n++ )) && l1+=$sep
+  if [[ -n $c && $c != *[^[:alnum:]#]* ]]; then
+    l1+="%F{$c}$t%f"
+  else
+    l1+=$t
+  fi
+done
+
+# Line 2: exit status (only when non-zero) and the prompt char.
+segs=()
+if (( ex != 0 )); then
+  segs=("${ZEV_EXIT_COLOR-red}" "[$ex]")
+  c=${ZEV_PROMPT_CHAR_ERR_COLOR-red}
+else
+  c=${ZEV_PROMPT_CHAR_OK_COLOR-green}
+fi
+_zev_prompt_escape "${ZEV_PROMPT_CHAR-❯}"
+segs+=("$c" "$REPLY")
+for c t in "${segs[@]}"; do
+  if [[ -n $c && $c != *[^[:alnum:]#]* ]]; then
+    l2+="%F{$c}$t%f "
+  else
+    l2+="$t "
+  fi
+done
+
+typeset -g _zev_prompt="$l1"$'\n'"$l2"
+if (( ${_zev_prompt_opt_subst:-0} == 1 )); then
+  PROMPT='${_zev_prompt}'
+else
+  PROMPT=$_zev_prompt
+fi
+return 0

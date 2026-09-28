@@ -1,0 +1,24 @@
+# _zev_prompt_escape STR -- make STR safe to embed in a prompt; result in REPLY.
+#
+# Public API (the git segment uses it too). In order:
+#   1. every control character (newline, ESC, DEL, ...) becomes '?'; in a
+#      UTF-8 locale, so does anything non-printable, including invalid bytes
+#      such as a lone 0x9b (C1 CSI) from arbitrary git ref names;
+#   2. '%' becomes '%%' so it is not a prompt escape;
+#   3. if the prompt_bang snapshot is 1, '!' becomes '!!'.
+# Dollar signs, backticks and backslashes are left alone: the theme never lets
+# the prompt string be re-scanned for substitutions (see _zev_prompt_render).
+# Reads only the option snapshot $_zev_prompt_opt_bang, never the live option,
+# because callers may be running under emulate -L.
+
+emulate -L zsh
+local s=$1
+s=${s//[[:cntrl:]]/?}
+if (( ${#${:-é}} == 1 )); then
+  s=${s//[^[:print:]]/?}
+fi
+s=${s//\%/%%}
+if (( ${_zev_prompt_opt_bang:-0} == 1 )); then
+  s=${s//\!/!!}
+fi
+REPLY=$s

@@ -1,0 +1,10 @@
+emulate -L zsh
+# _zev_vocab_state_dir [-c] -- REPLY=state dir; -c creates it (rc 1 on failure).
+# A relative XDG_STATE_HOME is ignored (XDG Base Directory spec).
+local base=${XDG_STATE_HOME-}
+[[ $base == /* ]] || base=${HOME-}/.local/state
+REPLY=$base/zsh-english-vocab
+[[ $1 == -c ]] || return 0
+[[ -d $REPLY ]] && return 0
+zmodload -F zsh/files b:zf_mkdir 2>/dev/null
+zf_mkdir -p $REPLY 2>/dev/null

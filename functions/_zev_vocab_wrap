@@ -1,0 +1,49 @@
+emulate -L zsh
+setopt extended_glob multibyte
+# _zev_vocab_wrap TEXT -- REPLY=TEXT word-wrapped to the terminal width, so a
+# line break never falls inside a word. ANSI SGR sequences (\e[...m) take no
+# width. A single word wider than the line gets a line of its own.
+#
+# Wraps only when stdout is a terminal (or _ZEV_VOCAB_ASSUME_TTY=1); piped
+# output keeps one line per entry. Width: ZEV_VOCAB_WIDTH when it is a number
+# of at least 20 (0 turns wrapping off), else COLUMNS when at least 20, else
+# 80. Widths are display columns, so wide characters count double.
+local text=$1 tok plain line=
+local -a toks
+integer width lw=0 tw
+REPLY=$text
+[[ -t 1 || ${_ZEV_VOCAB_ASSUME_TTY-} == 1 ]] || return 0
+[[ ${ZEV_VOCAB_WIDTH-} == 0 ]] && return 0
+if [[ ${ZEV_VOCAB_WIDTH-} == <-> ]] && (( ZEV_VOCAB_WIDTH >= 20 )); then
+  width=$ZEV_VOCAB_WIDTH
+elif [[ ${COLUMNS-} == <-> ]] && (( COLUMNS >= 20 )); then
+  width=$COLUMNS
+else
+  width=80
+fi
+plain=${text//$'\e'\[[0-9;]#m/}
+(( ${(m)#plain} <= width )) && return 0
+REPLY=
+toks=( "${(@s: :)text}" )
+for tok in "${toks[@]}"; do
+  plain=${tok//$'\e'\[[0-9;]#m/}
+  tw=${(m)#plain}
+  if [[ -z $tok ]]; then
+    # An empty token is a doubled space (e.g. after the history timestamp):
+    # keep it with the preceding text instead of breaking there.
+    line+=" "
+    (( lw += 1 ))
+  elif (( lw == 0 )); then
+    line=$tok
+    lw=tw
+  elif (( lw + 1 + tw <= width )); then
+    line+=" $tok"
+    (( lw += 1 + tw ))
+  else
+    REPLY+=$line$'\n'
+    line=$tok
+    lw=tw
+  fi
+done
+REPLY+=$line
+return 0

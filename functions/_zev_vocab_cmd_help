@@ -1,0 +1,13 @@
+emulate -L zsh
+# _zev_vocab_cmd_help -- print the vocab usage text to stdout.
+print -r -- 'usage: vocab [command]
+
+  vocab                   show the current word again
+  vocab next              show a new word (advances the queue)
+  vocab search [-d] TERM  list words containing TERM (-d: definitions too)
+  vocab fav [WORD]        favorite the current word, or WORD
+  vocab unfav WORD        remove WORD from favorites
+  vocab favs              list favorites with definitions
+  vocab history [N]       list the last N words shown (default 20)
+  vocab help              show this help'
+return 0

@@ -1,0 +1,59 @@
+# _zev_prompt_precmd -- precmd hook: record exit status, duration, path and
+# clock for the prompt about to be drawn, then call _zev_prompt_render.
+#
+# Status and duration describe only a command that actually ran (preexec set
+# _zev_prompt_cmd_start). An empty Enter, Ctrl-C at the prompt, or the first
+# prompt shows exit 0 (green prompt char) and no duration; a running command
+# interrupted with Ctrl-C shows [130] and its duration.
+#
+# Known limitation: a line that fails to parse runs precmd without preexec
+# (with $? = 1), so it is shown like an empty Enter: green, no [1].
+#
+# Options are snapshotted before emulate -L, which would hide the user's
+# prompt_subst / prompt_bang settings from the functions called below.
+
+local -i ec=$?
+if [[ -o promptsubst ]]; then
+  typeset -g _zev_prompt_opt_subst=1
+else
+  typeset -g _zev_prompt_opt_subst=0
+fi
+if [[ -o promptbang ]]; then
+  typeset -g _zev_prompt_opt_bang=1
+else
+  typeset -g _zev_prompt_opt_bang=0
+fi
+
+emulate -L zsh
+local REPLY start=${_zev_prompt_cmd_start-} thr fmt clk=
+typeset -F el
+local -i secs
+
+if [[ -n $start ]]; then
+  typeset -g _zev_prompt_exit=$ec _zev_prompt_duration=
+  if [[ $start == <-> || $start == <->.<-> ]] && [[ -n ${EPOCHREALTIME-} ]]; then
+    (( el = EPOCHREALTIME - start ))
+    (( el < 0 )) && el=0
+    thr=${ZEV_DURATION_THRESHOLD-3}
+    [[ $thr == <-> || $thr == <->.<-> ]] || thr=3
+    if (( el >= thr )); then
+      (( secs = el ))
+      _zev_prompt_duration_format $secs
+      _zev_prompt_duration=$REPLY
+    fi
+  fi
+  typeset -g _zev_prompt_cmd_start=
+else
+  typeset -g _zev_prompt_exit=0 _zev_prompt_duration=
+fi
+
+_zev_prompt_path_format "$PWD" "$HOME" "${ZEV_PATH_STYLE-short}"
+typeset -g _zev_prompt_path=$REPLY
+
+fmt=${ZEV_CLOCK_FORMAT-%H:%M}
+if [[ -n $fmt ]] && (( $+builtins[strftime] )) && [[ -n ${EPOCHSECONDS-} ]]; then
+  strftime -s clk "$fmt" $EPOCHSECONDS 2>/dev/null || clk=
+fi
+typeset -g _zev_prompt_clock=$clk
+
+_zev_prompt_render

@@ -1,0 +1,23 @@
+emulate -L zsh
+# _zev_vocab_cmd_favs -- "vocab favs": list favorites, in the order added, with
+# their definitions. Favorites no longer in the list are shown as such.
+local fav
+local -a favs
+if ! _zev_vocab_cmd_favread; then
+  print -ru2 -- "vocab: could not read $REPLY"
+  return 1
+fi
+if (( ! $#reply )); then
+  print -ru2 -- "vocab: no favorites yet (add one with 'vocab fav')"
+  return 0
+fi
+favs=( "${reply[@]}" )
+_zev_vocab_cmd_loadlist || return 1
+for fav in "$favs[@]"; do
+  if _zev_vocab_lookup "$fav" || _zev_vocab_lookup -i "$fav"; then
+    _zev_vocab_cmd_print "$REPLY"
+  else
+    print -r -- "$fav (not in the word list)"
+  fi
+done
+return 0

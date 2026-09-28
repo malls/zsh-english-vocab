@@ -1,0 +1,38 @@
+# _zev_prompt_git_worker GEN -- body of the background job; runs only in the
+# child forked by _zev_prompt_git_start, never in the interactive shell.
+#
+# Runs one 'git status --porcelain=v2 --branch --show-stash' and prints one
+# line: GEN, then TAB and the 9 fields of _zev_prompt_git_parse on success, or
+# just GEN when git fails (not a repo, inside .git/, bare repo, ...). If git
+# exits 129 (an old git without --show-stash) it retries once without that flag.
+#
+# Traps inherited from the user's shell are neutralized so they cannot write
+# into the result or run exit hooks. The worker never calls exit (a subshell's
+# explicit exit would run the parent's zshexit/TRAPEXIT); it just returns.
+
+emulate -L zsh
+trap '' INT QUIT
+trap - ZERR DEBUG EXIT
+unfunction TRAPZERR TRAPDEBUG TRAPEXIT zshexit 2>/dev/null
+
+local ign=${ZEV_GIT_IGNORE_SUBMODULES-dirty} out
+local -i rc
+local -a args reply
+
+[[ $ign == (none|untracked|dirty|all) ]] || ign=dirty
+args=(status --porcelain=v2 --branch --show-stash --ignore-submodules=$ign)
+
+out=$(GIT_OPTIONAL_LOCKS=0 LC_ALL=C GIT_TERMINAL_PROMPT=0 command git "${args[@]}" </dev/null 2>/dev/null)
+rc=$?
+if (( rc == 129 )); then
+  args=(${args:#--show-stash})
+  out=$(GIT_OPTIONAL_LOCKS=0 LC_ALL=C GIT_TERMINAL_PROMPT=0 command git "${args[@]}" </dev/null 2>/dev/null)
+  rc=$?
+fi
+
+if (( rc == 0 )) && _zev_prompt_git_parse "$out"; then
+  print -r -- "$1"$'\t'"${(pj:\t:)reply}"
+else
+  print -r -- "$1"
+fi
+return 0

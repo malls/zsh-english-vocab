@@ -1,0 +1,61 @@
+# _zev_prompt_git_parse TEXT -- parse 'git status --porcelain=v2 --branch
+# --show-stash' output. Pure (no forks, no output).
+#
+# Sets reply=(head oid ahead behind staged unstaged untracked conflicted stash)
+# and returns 0, or sets reply=() and returns 1 unless both '# branch.oid' and
+# '# branch.head' were seen (empty input, 'fatal: ...', garbage).
+#
+#   head        branch name, or '(detached)'
+#   oid         commit id, or '(initial)' in a repo with no commits
+#   ahead/behind from '# branch.ab +A -B'; 0 without an upstream
+#   staged      '1'/'2' entries whose X (index) status is not '.'
+#   unstaged    '1'/'2' entries whose Y (work tree) status is not '.'
+#               (a file can count in both; a rename/copy is one entry)
+#   untracked   '?' entries (an untracked directory counts once)
+#   conflicted  'u' (unmerged) entries; counted in neither staged nor unstaged
+#   stash       from '# stash N' (absent = 0)
+#
+# Counting uses array filters rather than a per-line loop, so large outputs
+# stay fast.
+
+emulate -L zsh
+setopt extended_glob
+local line head= oid= ab
+local -i ahead=0 behind=0 stash=0 seen_head=0 seen_oid=0
+local -a lines st un ut cf
+
+reply=()
+[[ -n $1 ]] || return 1
+lines=("${(@f)1}")
+
+for line in "${(@M)lines:#\# *}"; do
+  case $line in
+    '# branch.oid '*)
+      oid=${line#\# branch.oid }
+      seen_oid=1
+      ;;
+    '# branch.head '*)
+      head=${line#\# branch.head }
+      seen_head=1
+      ;;
+    '# branch.ab +'<->' -'<->)
+      ab=${line#\# branch.ab +}
+      ahead=${ab%% *}
+      behind=${ab##* -}
+      ;;
+    '# stash '<->)
+      stash=${line#\# stash }
+      ;;
+  esac
+done
+
+(( seen_head && seen_oid )) || return 1
+[[ -n $head && -n $oid ]] || return 1
+
+st=(${(M)lines:#[12] [^.]?*})
+un=(${(M)lines:#[12] ?[^.]*})
+ut=(${(M)lines:#\? *})
+cf=(${(M)lines:#u *})
+
+reply=("$head" "$oid" $ahead $behind $#st $#un $#ut $#cf $stash)
+return 0

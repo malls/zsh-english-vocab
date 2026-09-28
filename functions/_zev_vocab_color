@@ -1,0 +1,4 @@
+emulate -L zsh
+# _zev_vocab_color -- rc 0 if ANSI styling applies to stdout.
+[[ -z ${NO_COLOR-} && ${TERM-} != dumb ]] || return 1
+[[ -t 1 || ${_ZEV_VOCAB_ASSUME_TTY-} == 1 ]]

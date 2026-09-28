@@ -1,0 +1,17 @@
+emulate -L zsh
+# _zev_vocab_cmd_next -- "vocab next": pop, record and print a new word.
+integer rc
+_zev_vocab_cmd_loadlist || return 1
+_zev_vocab_next
+rc=$?
+if (( rc == 0 )); then
+  _zev_vocab_cmd_print "${(pj:\t:)reply}"
+  return 0
+fi
+if (( rc == 2 )); then
+  print -ru2 -- 'vocab: state is busy (another shell holds the lock); try again'
+else
+  _zev_vocab_state_dir
+  print -ru2 -- "vocab: could not update state in $REPLY"
+fi
+return 1

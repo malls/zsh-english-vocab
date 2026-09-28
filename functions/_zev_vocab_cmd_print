@@ -1,0 +1,18 @@
+emulate -L zsh
+# _zev_vocab_cmd_print LINE... -- print each raw TSV entry for display (styled
+# when _zev_vocab_color says so; word-wrapped on a terminal).
+local line REPLY
+local -a f
+integer c=0
+_zev_vocab_color && c=1
+for line in "$@"; do
+  f=( "${(@ps:\t:)line}" )
+  if (( c )); then
+    _zev_vocab_format -c "$f[1]" "$f[2]" "$f[3]" "$f[4]"
+  else
+    _zev_vocab_format "$f[1]" "$f[2]" "$f[3]" "$f[4]"
+  fi
+  _zev_vocab_wrap "$REPLY"
+  print -r -- "$REPLY"
+done
+return 0

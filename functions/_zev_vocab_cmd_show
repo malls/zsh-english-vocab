@@ -1,0 +1,9 @@
+emulate -L zsh
+# _zev_vocab_cmd_show -- "vocab": print the current word again. With no
+# current word (or one no longer in the list), show a new one instead.
+_zev_vocab_cmd_loadlist || return 1
+if _zev_vocab_current && _zev_vocab_lookup "$REPLY"; then
+  _zev_vocab_cmd_print "$REPLY"
+  return 0
+fi
+_zev_vocab_cmd_next

@@ -1,0 +1,78 @@
+# _zev_prompt_setup -- theme setup; called once (per source) by the theme
+# entry file, outside its emulate -L block. Registers the precmd/preexec hooks,
+# initializes the globals, calls the optional git extension, and renders the
+# first prompt. Safe to call more than once.
+#
+# Settings (read at every prompt, so changes apply at the next one; an unset
+# variable uses the default; a color set to empty means no color):
+#
+#   ZEV_PATH_STYLE              short   'full' = no shortening; anything else = short
+#   ZEV_PATH_COLOR              blue
+#   ZEV_DURATION_THRESHOLD      3       seconds (integer or decimal); show
+#                                       'took ...' only at or above this;
+#                                       invalid or empty = 3
+#   ZEV_DURATION_PREFIX         'took '
+#   ZEV_DURATION_COLOR          yellow
+#   ZEV_CLOCK_FORMAT            %H:%M   strftime format; empty hides the clock
+#   ZEV_CLOCK_COLOR             8       (bright black)
+#   ZEV_EXIT_COLOR              red     for [N] (shown only when N != 0)
+#   ZEV_PROMPT_CHAR             ❯
+#   ZEV_PROMPT_CHAR_OK_COLOR    green
+#   ZEV_PROMPT_CHAR_ERR_COLOR   red
+#
+# Colors are %F{...} values: a name, 0-255, or #rrggbb. A value with any other
+# character is ignored (treated as no color).
+#
+# Git extension seam: if _zev_prompt_git_setup exists it is called once, after
+# the hooks are registered and before the first render. It owns the global
+# _zev_prompt_git (a prompt-ready segment, already escaped, no surrounding
+# spaces; empty = hidden) and calls _zev_prompt_render after changing it.
+#
+# This function runs with the user's options, so it must not use emulate or
+# local_options, and it uses only constructs that behave the same under any
+# options (ksh_arrays, sh_word_split, warn_create_global, ...).
+
+if [[ -o promptsubst ]]; then
+  typeset -g _zev_prompt_opt_subst=1
+else
+  typeset -g _zev_prompt_opt_subst=0
+fi
+if [[ -o promptbang ]]; then
+  typeset -g _zev_prompt_opt_bang=1
+else
+  typeset -g _zev_prompt_opt_bang=0
+fi
+
+zmodload zsh/datetime 2>/dev/null || :
+autoload -Uz add-zsh-hook
+# Load the bodies now (rc 1 if already defined; ignored) so the first precmd
+# captures $? before anything else runs.
+{ autoload +X _zev_prompt_precmd _zev_prompt_preexec _zev_prompt_render \
+    _zev_prompt_escape _zev_prompt_path_format _zev_prompt_duration_format } 2>/dev/null || :
+
+# Re-sourced while a command runs (e.g. 'source ~/.zshrc'): keep its start
+# time so the real precmd still reports that command's status and duration.
+local _zev_saved=${_zev_prompt_cmd_start-}
+
+typeset -g _zev_prompt_cmd_start=
+typeset -g _zev_prompt_exit=0
+typeset -g _zev_prompt_duration=
+typeset -g _zev_prompt_clock=
+typeset -g _zev_prompt_path=
+typeset -g _zev_prompt=${_zev_prompt-}
+typeset -g _zev_prompt_git=${_zev_prompt_git-}
+
+add-zsh-hook precmd _zev_prompt_precmd
+add-zsh-hook preexec _zev_prompt_preexec
+
+RPROMPT=''
+
+if (( ${+functions[_zev_prompt_git_setup]} )); then
+  _zev_prompt_git_setup
+fi
+
+_zev_prompt_precmd
+if [[ -n $_zev_saved ]]; then
+  typeset -g _zev_prompt_cmd_start=$_zev_saved
+fi
+return 0

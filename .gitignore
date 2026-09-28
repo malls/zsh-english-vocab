@@ -1,0 +1,4 @@
+# Local build/agent scaffolding; not published.
+.lattice/
+agents.md
+CLAUDE.local.md

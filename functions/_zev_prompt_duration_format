@@ -1,0 +1,17 @@
+# _zev_prompt_duration_format SECS -- format whole seconds; result in REPLY.
+#
+# Starts at the largest non-zero unit and includes every lower unit:
+#   0 -> 0s, 64 -> 1m4s, 3600 -> 1h0m0s, 90061 -> 1d1h1m1s
+
+emulate -L zsh
+local -i t=$1 d h m s
+(( d = t / 86400, h = t % 86400 / 3600, m = t % 3600 / 60, s = t % 60 ))
+if (( d )); then
+  REPLY=${d}d${h}h${m}m${s}s
+elif (( h )); then
+  REPLY=${h}h${m}m${s}s
+elif (( m )); then
+  REPLY=${m}m${s}s
+else
+  REPLY=${s}s
+fi

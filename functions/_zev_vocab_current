@@ -1,0 +1,6 @@
+emulate -L zsh
+# _zev_vocab_current -- REPLY=the word shown most recently. rc 1 if none.
+_zev_vocab_state_dir || return 1
+_zev_vocab_readfile $REPLY/current || return 1
+REPLY=${REPLY%%$'\n'*}
+[[ -n $REPLY ]]

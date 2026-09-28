@@ -1,0 +1,132 @@
+#!/usr/bin/env zsh
+# tools/bench-vocab -- measure the vocab plugin's startup cost (manual check of
+# the < 10 ms budget in SPEC.md section 3). Uses a temporary state dir that is
+# removed on exit; never touches real state.
+
+emulate -R zsh
+setopt extended_glob
+zmodload zsh/datetime
+
+usage() {
+  cat <<'EOF'
+usage: tools/bench-vocab [-n N] [-w WORDS]
+
+Times N fresh `zsh -f` shells sourcing zsh-english-vocab.plugin.zsh against a
+temporary XDG_STATE_HOME and reports min, median, p90 and max in ms for:
+  (a) steady state: in-process time to source the plugin, queue present
+  (b) refill: the same with the queue deleted before each run (reshuffle)
+  (c) whole-shell delta: `zsh -f -c 'source plugin'` minus `zsh -f -c :`
+Budget: (a) median < 10 ms. (b) runs about once per list length.
+
+  -n N      runs per measurement (default 50)
+  -w WORDS  word list (default data/words.tsv; if it has fewer than 1000
+            lines, 1200 synthetic entries are generated instead)
+EOF
+}
+
+typeset root=${0:A:h:h}
+typeset plugin=$root/zsh-english-vocab.plugin.zsh
+integer n=50
+typeset words=$root/data/words.tsv
+integer words_given=0
+
+while (( $# )); do
+  case $1 in
+    -n) (( $# >= 2 )) && [[ $2 == <1-> ]] || { usage >&2; exit 2 }; n=$2; shift ;;
+    -w) (( $# >= 2 )) || { usage >&2; exit 2 }; words=$2; words_given=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+typeset tmp
+tmp=$(mktemp -d "${${TMPDIR:-/tmp}%/}/zev-bench.XXXXXX") || exit 1
+trap 'rm -rf -- "$tmp"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+typeset -a lines
+[[ -r $words ]] && lines=( ${(f)"$(<$words)"} )
+if (( $#lines < 1000 )); then
+  if (( words_given )); then
+    print -ru2 -- "note: $words has $#lines lines (< 1000); using 1200 synthetic entries"
+  fi
+  words=$tmp/words.tsv
+  integer i
+  for (( i = 1; i <= 1200; i++ )); do
+    print -r -- "benchword$i"$'\tn.\ta synthetic definition of moderate length for benchmarking number '$i$'\tfrom the benchmark tool, which invents words'
+  done > $words
+  lines=( ${(f)"$(<$words)"} )
+fi
+
+# Keep the word visible to the plugin: clear everything that suppresses it.
+unset ZEV_VOCAB_DISABLE TMUX SSH_CONNECTION SSH_TTY _ZEV_VOCAB_LOCK_IMPL NO_COLOR
+export XDG_STATE_HOME=$tmp/state ZEV_VOCAB_WORDS=$words _ZEV_VOCAB_ASSUME_TTY=1
+typeset sd=$XDG_STATE_HOME/zsh-english-vocab
+
+# stats NAME VALUE... -- print min/median/p90/max.
+stats() {
+  local name=$1
+  shift
+  local -a v
+  local x
+  integer us
+  # (n) sorts digit runs as integers, so 6.5 would sort after 6.42; key every
+  # value by zero-padded microseconds first.
+  for x in "$@"; do (( us = x * 1000 + 0.5 )); v+=( "${(l:12::0:)us} $x" ); done
+  v=( ${${(o)v}#* } )
+  integer c=$#v p90=$(( (9 * $#v + 9) / 10 ))
+  local med
+  if (( c % 2 )); then
+    med=$v[(c+1)/2]
+  else
+    (( med = (v[c/2] + v[c/2+1]) / 2.0 ))
+  fi
+  printf '%-26s min %6.2f  median %6.2f  p90 %6.2f  max %6.2f  ms\n' \
+    $name $v[1] $med $v[p90] $v[-1]
+  REPLY=$med
+}
+
+inproc() {
+  zsh -f -c 'zmodload zsh/datetime; t0=$EPOCHREALTIME; source $1 >/dev/null; print $(( (EPOCHREALTIME-t0)*1000 ))' zsh $plugin
+}
+
+wall() {
+  local t0=$EPOCHREALTIME
+  "$@" >/dev/null 2>&1
+  print $(( (EPOCHREALTIME - t0) * 1000 ))
+}
+
+print -r -- "zsh-english-vocab startup benchmark: $n runs, $#lines words ($words)"
+print -r -- "zsh $ZSH_VERSION, $(uname -sm)"
+
+typeset -a a b plug bare
+integer k
+inproc >/dev/null  # prime: create the queue
+for (( k = 1; k <= n; k++ )); do
+  a+=( $(inproc) )
+done
+for (( k = 1; k <= n; k++ )); do
+  rm -f -- $sd/queue
+  b+=( $(inproc) )
+done
+for (( k = 1; k <= n; k++ )); do
+  bare+=( $(wall zsh -f -c :) )
+  plug+=( $(wall zsh -f -c 'source $1' zsh $plugin) )
+done
+
+stats '(a) steady state' $a
+typeset med_a=$REPLY
+stats '(b) refill' $b
+stats '    zsh -f -c :' $bare
+typeset med_bare=$REPLY
+stats '    zsh -f -c source' $plug
+typeset med_plug=$REPLY
+printf '%-26s %.2f ms (median difference)\n' '(c) whole-shell delta' $(( med_plug - med_bare ))
+if (( med_a < 10 )); then
+  print -r -- "budget: (a) median < 10 ms: OK"
+else
+  print -r -- "budget: (a) median < 10 ms: OVER"
+  exit 1
+fi

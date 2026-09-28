@@ -1,0 +1,196 @@
+#!/usr/bin/env zsh
+# tools/make-screenshot -- regenerate docs/screenshot.svg from a real
+# interactive zsh session. See --help.
+
+emulate -R zsh
+setopt pipe_fail
+
+usage() {
+  cat <<'EOF'
+usage: tools/make-screenshot [-o FILE] [--keep]
+
+Builds a throwaway oh-my-zsh install in a sandbox HOME, drives a real
+interactive zsh in it with expect, and renders the captured terminal output
+with tools/ansi2svg.
+
+  -o FILE   write the SVG here (default: docs/screenshot.svg in this repo)
+  --keep    keep the sandbox (it holds the raw capture, typescript.txt) and
+            print its path; by default it is deleted
+  -h        this help
+
+The sandbox (under $TMPDIR, via mktemp -d):
+  - HOME=<sandbox>/home with a copy of $ZEV_OMZ_DIR (default ~/.oh-my-zsh);
+    the real one is never modified. Any zsh-english-vocab entries in the
+    copy's custom/ dir are left out, then this repo's WORKING TREE (not HEAD)
+    is symlinked in as the plugin and theme, so uncommitted changes show up.
+  - ~/.zshrc is oh-my-zsh's template with ZSH_THEME="zsh-english-vocab" and
+    plugins=(git zsh-english-vocab), plus DISABLE_AUTO_UPDATE and
+    DISABLE_AUTO_TITLE.
+  - A demo repo at ~/Code/zsh-english-vocab: one commit ahead of its
+    upstream, one stash entry, 2 staged, 1 unstaged and 3 untracked files.
+  - The word queue is seeded with "petrichor" then "widdershins", so the
+    startup word and `vocab next` are the same on every run.
+
+The shell runs under `env -i` (no TMUX, SSH_*, ZEV_* or other leakage) in a
+100x30 pty with TERM=xterm-256color and LANG=en_US.UTF-8, and runs:
+cd ~/Code/zsh-english-vocab, sleep 4, false, vocab next. Only the clock
+(HH:MM, local time; TZ is passed through if set) differs between runs.
+
+Needs: expect, git, python3 (3.9+), oh-my-zsh. Exit status: 0 on success,
+1 on failure (including any expect timeout), 2 on a usage error.
+EOF
+}
+
+typeset root=${0:A:h:h}
+typeset out=$root/docs/screenshot.svg
+integer keep=0
+while (( $# )); do
+  case $1 in
+    -o) (( $# >= 2 )) || { usage >&2; exit 2 }; out=$2; shift ;;
+    --keep) keep=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+die() { print -ru2 -- "make-screenshot: $*"; exit 1 }
+
+typeset omz=${ZEV_OMZ_DIR:-$HOME/.oh-my-zsh}
+[[ -f $omz/oh-my-zsh.sh && -f $omz/templates/zshrc.zsh-template ]] ||
+  die "no oh-my-zsh at $omz (set ZEV_OMZ_DIR)"
+whence -p expect >/dev/null || die "expect not found"
+whence -p python3 >/dev/null || die "python3 not found"
+whence -p git >/dev/null || die "git not found"
+for w in petrichor widdershins; do
+  grep -q "^$w"$'\t' $root/data/words.tsv || die "'$w' is not in data/words.tsv"
+done
+
+typeset S
+S=$(mktemp -d "${TMPDIR:-/tmp}/zev-shot.XXXXXX") || die "mktemp failed"
+S=${S:A}
+cleanup() {
+  if (( keep )); then
+    print -ru2 -- "make-screenshot: sandbox kept at $S"
+  else
+    rm -rf -- "$S"
+  fi
+}
+trap cleanup EXIT
+trap 'exit 1' INT TERM
+
+typeset H=$S/home
+mkdir -p $H/Code $H/.local/state/zsh-english-vocab
+
+# --- oh-my-zsh copy and install (the README's steps) ------------------------
+rsync -a --exclude '/cache/' \
+  --exclude '/custom/plugins/zsh-english-vocab' \
+  --exclude '/custom/themes/zsh-english-vocab.zsh-theme' \
+  "$omz/" "$H/.oh-my-zsh/" || die "copying $omz failed"
+typeset zc=$H/.oh-my-zsh/custom
+mkdir -p $zc/plugins $zc/themes
+ln -s $root $zc/plugins/zsh-english-vocab
+ln -s $zc/plugins/zsh-english-vocab/zsh-english-vocab.zsh-theme \
+      $zc/themes/zsh-english-vocab.zsh-theme
+[[ -f $zc/themes/zsh-english-vocab.zsh-theme ]] || die "theme symlink does not resolve"
+
+{
+  print -r -- 'DISABLE_AUTO_UPDATE="true"'
+  print -r -- 'DISABLE_AUTO_TITLE="true"'
+  sed -e 's/^ZSH_THEME=.*/ZSH_THEME="zsh-english-vocab"/' \
+      -e 's/^plugins=(git)$/plugins=(git zsh-english-vocab)/' \
+      $H/.oh-my-zsh/templates/zshrc.zsh-template
+} > $H/.zshrc
+grep -qx 'ZSH_THEME="zsh-english-vocab"' $H/.zshrc &&
+  grep -qx 'plugins=(git zsh-english-vocab)' $H/.zshrc ||
+  die "could not set ZSH_THEME/plugins in the template .zshrc"
+
+# --- deterministic words ----------------------------------------------------
+print -rl -- petrichor widdershins > $H/.local/state/zsh-english-vocab/queue
+
+# --- demo repo ----------------------------------------------------------------
+demo_git() {
+  env -i HOME=$H PATH=/opt/homebrew/bin:/usr/bin:/bin GIT_CONFIG_NOSYSTEM=1 \
+    GIT_AUTHOR_DATE='2026-01-01T12:00:00' GIT_COMMITTER_DATE='2026-01-01T12:00:00' \
+    git -c init.defaultBranch=main -c user.name=Demo -c user.email=demo@example.com \
+    -c commit.gpgsign=false "$@" >/dev/null 2>&1
+}
+typeset R=$H/Code/zsh-english-vocab
+{
+  demo_git init -q --bare $S/upstream.git &&
+  demo_git init -q -b main $R &&
+  print -r -- '# demo' > $R/README.md &&
+  print -r -- 'spec' > $R/SPEC.md &&
+  print -r -- 'notes' > $R/notes.txt &&
+  demo_git -C $R add -A &&
+  demo_git -C $R commit -q -m initial &&
+  demo_git -C $R remote add origin $S/upstream.git &&
+  demo_git -C $R push -q -u origin main &&
+  print -r -- 'changes' > $R/CHANGES.md &&
+  demo_git -C $R add CHANGES.md &&
+  demo_git -C $R commit -q -m 'local commit' &&
+  print -r -- 'stashed' >> $R/notes.txt &&
+  demo_git -C $R stash -q &&
+  print -r -- 'staged' >> $R/README.md &&
+  print -r -- 'new' > $R/staged.txt &&
+  demo_git -C $R add README.md staged.txt &&
+  print -r -- 'unstaged' >> $R/SPEC.md &&
+  touch $R/a.txt $R/b.txt $R/c.txt
+} || die "building the demo repo failed"
+
+# --- drive the shell ------------------------------------------------------------
+typeset ts=$S/typescript.txt exp=$S/drive.exp
+cat > $exp <<'EOF'
+set timeout 20
+set ts [lindex $argv 0]
+set stty_init "rows 30 columns 100"
+log_user 0
+proc fail {what} {
+  send_error "make-screenshot: timed out or shell exited waiting for $what\n"
+  exit 1
+}
+proc wait_for {re what} {
+  expect {
+    -re $re {}
+    timeout { fail $what }
+    eof { fail $what }
+  }
+}
+log_file -noappend -a $ts
+spawn -noecho /bin/zsh -i
+# Fallback in case stty_init did not apply.
+catch { exec stty rows 30 columns 100 < $spawn_out(slave,name) }
+wait_for "❯" "the first prompt"
+sleep 1
+send "cd ~/Code/zsh-english-vocab\r"
+wait_for "⇡1" "the git segment"
+sleep 1
+send "sleep 4\r"
+wait_for "took 4s" "the duration segment"
+sleep 1
+send "false\r"
+wait_for {\[1\]} "the exit code"
+sleep 1
+send "vocab next\r"
+wait_for "widdershins" "vocab next"
+wait_for "❯" "the last prompt"
+sleep 1
+log_file
+send "exit\r"
+expect {
+  eof {}
+  timeout { fail "the shell to exit" }
+}
+EOF
+
+typeset -a envv=(HOME=$H TERM=xterm-256color LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+  PATH=/opt/homebrew/bin:/usr/bin:/bin SHELL=/bin/zsh USER=${USER:-demo}
+  LOGNAME=${LOGNAME:-demo} GIT_CONFIG_NOSYSTEM=1)
+[[ -n ${TZ-} ]] && envv+=(TZ=$TZ)
+( cd $H && env -i $envv expect -f $exp $ts ) || die "the scripted session failed"
+
+# --- render -------------------------------------------------------------------
+typeset tmp=$out.tmp.$$
+python3 $root/tools/ansi2svg --cols 100 --rows 30 < $ts > $tmp || { rm -f -- $tmp; die "ansi2svg failed" }
+mv -f -- $tmp $out
+print -r -- "make-screenshot: wrote $out"

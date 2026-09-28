@@ -1,0 +1,44 @@
+emulate -L zsh
+# _zev_vocab_cmd_unfav WORD... -- "vocab unfav": remove WORD (words joined with
+# spaces; any case) from favorites. Does not need the word list.
+setopt extended_glob
+local word tok stored
+local -a keep
+integer rc=0
+(( $# )) || { _zev_vocab_cmd_usage 'unfav needs a word'; return }
+word="${(j: :)@}"
+# Check first without locking, so a missing file never creates the state dir.
+if ! _zev_vocab_cmd_favread; then
+  print -ru2 -- "vocab: could not read $REPLY"
+  return 1
+fi
+keep=( ${(M)reply:#(#i)"$word"} )
+if (( ! $#keep )); then
+  print -ru2 -- "vocab: not a favorite: $word"
+  return 1
+fi
+_zev_vocab_cmd_lock || return 1
+tok=$REPLY
+{
+  if ! _zev_vocab_cmd_favread; then
+    print -ru2 -- "vocab: could not read $REPLY"
+    rc=1
+  else
+    keep=( ${reply:#(#i)"$word"} )
+    if (( $#keep == $#reply )); then
+      print -ru2 -- "vocab: not a favorite: $word"
+      rc=1
+    else
+      stored=${${(M)reply:#(#i)"$word"}[1]}
+      if _zev_vocab_cmd_favwrite "$REPLY" "${keep[@]}"; then
+        print -r -- "Removed from favorites: $stored"
+      else
+        print -ru2 -- "vocab: could not write $REPLY"
+        rc=1
+      fi
+    fi
+  fi
+} always {
+  _zev_vocab_unlock $tok
+}
+return rc

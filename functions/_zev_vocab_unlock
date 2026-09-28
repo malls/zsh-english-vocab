@@ -1,0 +1,18 @@
+emulate -L zsh
+# _zev_vocab_unlock TOKEN -- release a lock taken by _zev_vocab_lock.
+local tok=$1
+[[ -n $tok ]] || return 0
+if [[ $tok == dir:* ]]; then
+  zmodload -F zsh/files b:zf_rm b:zf_rmdir 2>/dev/null
+  tok=${tok#dir:}
+  # Only release a lock that is still ours: if another process broke it and
+  # took it over, removing it would let a third process in.
+  local REPLY
+  _zev_vocab_readfile $tok/pid || return 0
+  [[ ${REPLY%%$'\n'*} == $$ ]] || return 0
+  zf_rm -f $tok/pid 2>/dev/null
+  zf_rmdir $tok 2>/dev/null
+else
+  zsystem flock -u $tok 2>/dev/null
+fi
+return 0

@@ -1,0 +1,16 @@
+emulate -L zsh
+# _zev_vocab_readfile FILE -- REPLY=FILE's raw bytes; rc 1 if unreadable.
+# The sysread path is byte-exact; the $(<file) fallback strips trailing
+# newlines (harmless for line-splitting callers).
+local file=$1 c d=
+integer rc=5
+[[ -n $file && -r $file && ! -d $file ]] || return 1
+if zmodload zsh/system 2>/dev/null; then
+  # sysread returns 5 at end of file; anything else is a read error.
+  { { while sysread -s 1048576 c; rc=$?; (( rc == 0 )); do d+=$c; done } <$file } 2>/dev/null || return 1
+  (( rc == 5 )) || return 1
+  REPLY=$d
+else
+  { REPLY=$(<$file) } 2>/dev/null || return 1
+fi
+return 0

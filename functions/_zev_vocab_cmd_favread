@@ -1,0 +1,14 @@
+emulate -L zsh
+# _zev_vocab_cmd_favread -- REPLY=favorites path, reply=its non-empty lines.
+# A missing file gives reply=() and rc 0; rc 1 only if it exists but can't be
+# read.
+local file
+reply=()
+_zev_vocab_state_dir
+file=$REPLY/favorites
+if [[ -e $file ]]; then
+  _zev_vocab_readfile $file || { REPLY=$file; return 1 }
+  reply=( ${(f)REPLY} )
+fi
+REPLY=$file
+return 0

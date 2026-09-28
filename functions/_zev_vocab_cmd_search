@@ -1,0 +1,43 @@
+emulate -L zsh
+# _zev_vocab_cmd_search [-d] TERM... -- "vocab search": list entries whose word
+# contains TERM (literal, case-insensitive); -d also matches definitions.
+# Order: exact word, word prefix, word substring, definition match.
+setopt extended_glob
+local a term w d line
+local -a words exact prefix sub defm f
+integer defs=0 opts=1
+for a in "$@"; do
+  if (( opts )); then
+    case $a in
+      -d) defs=1; continue ;;
+      --) opts=0; continue ;;
+      -?*) _zev_vocab_cmd_usage "unknown option: $a"; return ;;
+    esac
+  fi
+  words+=( "$a" )
+done
+term="${(j: :)words}"
+[[ -n $term ]] || { _zev_vocab_cmd_usage 'search needs a term'; return }
+_zev_vocab_cmd_loadlist || return 1
+for line in "$_zev_vocab_lines[@]"; do
+  w=${line%%$'\t'*}
+  if [[ $w == (#i)*"$term"* ]]; then
+    if [[ $w == (#i)"$term" ]]; then
+      exact+=( "$line" )
+    elif [[ $w == (#i)"$term"* ]]; then
+      prefix+=( "$line" )
+    else
+      sub+=( "$line" )
+    fi
+  elif (( defs )); then
+    # The definition is field 3; pos and etymology are not searched.
+    f=( "${(@ps:\t:)line}" )
+    d=$f[3]
+    [[ $d == (#i)*"$term"* ]] && defm+=( "$line" )
+  fi
+done
+if (( $#exact + $#prefix + $#sub + $#defm == 0 )); then
+  print -ru2 -- "vocab: no matches for '$term'"
+  return 1
+fi
+_zev_vocab_cmd_print "$exact[@]" "$prefix[@]" "$sub[@]" "$defm[@]"

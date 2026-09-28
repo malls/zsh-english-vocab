@@ -1,0 +1,5 @@
+emulate -L zsh
+# _zev_vocab_cmd_usage MSG -- print "vocab: MSG" and the usage to stderr; rc 2.
+print -ru2 -- "vocab: $1"
+_zev_vocab_cmd_help >&2
+return 2

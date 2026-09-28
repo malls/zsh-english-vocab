@@ -1,0 +1,55 @@
+# _zev_prompt_git_handler FD [ERR] -- zle -F callback for the git job's fd.
+#
+# Unregisters and closes FD first (so a bug can never cause a busy loop), then
+# applies the job's record only if FD is the current job, the record's
+# generation is the current one, and the cwd is still in the same repo (a
+# widget may cd without running precmd):
+#   - a full record: store the fields and re-format the segment;
+#   - just the generation (git failed): hide the segment;
+#   - anything else (EOF without data, garbage): leave everything unchanged.
+# Starts the pending job, if any, then redraws the prompt if the segment
+# changed. Returns 0.
+
+emulate -L zsh
+local fd=$1 line= old x REPLY
+local -a f
+local -i ok=1
+
+[[ $fd == <-> ]] || return 0
+zle -F $fd 2>/dev/null
+IFS= read -r -t 1 -u $fd line 2>/dev/null
+{ exec {fd}<&- } 2>/dev/null
+
+[[ $fd == "$_zev_prompt_git_fd" ]] || return 0
+_zev_prompt_git_fd=
+old=$_zev_prompt_git
+
+f=("${(@ps:\t:)line}")
+if [[ -n $line && $f[1] == "$_zev_prompt_git_gen" ]]; then
+  _zev_prompt_git_root
+  if [[ $REPLY == "$_zev_prompt_git_key" ]]; then
+    if (( $#f == 10 )); then
+      for x in "${(@)f[4,10]}"; do
+        [[ $x == <-> ]] || ok=0
+      done
+      if (( ok )); then
+        _zev_prompt_git_fields=("${(@)f[2,10]}")
+        _zev_prompt_git_format "${_zev_prompt_git_fields[@]}"
+        _zev_prompt_git=$REPLY
+      fi
+    elif (( $#f == 1 )); then
+      _zev_prompt_git_fields=()
+      _zev_prompt_git=
+    fi
+  fi
+fi
+
+if (( _zev_prompt_git_pending )); then
+  _zev_prompt_git_start
+fi
+
+if [[ $_zev_prompt_git != "$old" ]]; then
+  _zev_prompt_render
+  zle && zle reset-prompt
+fi
+return 0

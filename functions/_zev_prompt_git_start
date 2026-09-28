@@ -1,0 +1,16 @@
+# _zev_prompt_git_start -- spawn the single background git job for the current
+# directory and register _zev_prompt_git_handler for its fd with zle -F.
+#
+# This is the theme's only fork site. The job is a process substitution: it
+# creates no job-table entry (no job notices) and the shell reaps it. Its PID
+# is not known, so jobs are never killed; see _zev_prompt_git_setup.
+# Returns 1 (nothing registered) if the fd cannot be opened.
+
+emulate -L zsh
+local -i fd
+(( ++_zev_prompt_git_gen ))
+exec {fd}< <(_zev_prompt_git_worker $_zev_prompt_git_gen </dev/null 2>/dev/null) || return 1
+_zev_prompt_git_fd=$fd
+_zev_prompt_git_pending=0
+zle -F $fd _zev_prompt_git_handler 2>/dev/null
+return 0

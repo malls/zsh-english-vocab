@@ -1,0 +1,89 @@
+# _zev_prompt_git_setup -- async git segment for the theme (line 1, between the
+# path and the duration). Called once per theme source by _zev_prompt_setup,
+# after its hooks are registered. Initializes the globals (keeping existing
+# values on re-source), loads the function bodies up front (the background
+# job inherits them), and registers the _zev_prompt_git_precmd hook. Spawns
+# nothing; returns 0.
+#
+# The hook is registered only when zle is active (the zle option is set by zsh
+# at startup for an interactive shell on a terminal, before any rc file runs):
+# results are delivered through zle -F, so without zle there is nothing to do
+# and the segment stays hidden. There is no synchronous fallback, because the
+# prompt must never wait on git.
+#
+# How it works: each prompt, _zev_prompt_git_update finds the repo without
+# forking (_zev_prompt_git_root) and starts at most one background job per
+# repo (_zev_prompt_git_start), which runs one
+#   git status --porcelain=v2 --branch --show-stash --ignore-submodules=...
+# with GIT_OPTIONAL_LOCKS=0 LC_ALL=C GIT_TERMINAL_PROMPT=0. The prompt is drawn
+# immediately; _zev_prompt_git_handler applies the result (zle -F) and redraws
+# with zle reset-prompt. Moving to another repo blanks the segment until the
+# new result arrives; results from an older job or another repo are discarded.
+#
+# Segment, by ZEV_GIT_STYLE:
+#   dots (default): NAME [⇡A] [⇣B] [●] [●] [≡N]
+#     e.g. 'main ⇡1 ● ● ≡1', 'main' (clean). Green dot = something staged;
+#     red dot = unstaged, untracked or conflicted changes; no dot = clean.
+#   counts: NAME [⇡A] [⇣B] (✓ | [~C] [+S] [!U] [?T]) [≡N]
+#     e.g. 'main ⇡1 +2 !1 ?3 ≡1', 'main ⇡3 ⇣12 ✓', '92fb3b1 ?1' (detached)
+#     Zero counts are omitted; ✓ replaces only ~ + ! ? (ahead/behind and
+#     stash are still shown). Conflicted (unmerged) files count as ~ only.
+#
+# Settings (read at every prompt or result; an unset variable uses the
+# default; a marker set to empty hides that category; a color set to empty, or
+# with any character other than [[:alnum:]#], means no color):
+#
+#   ZEV_GIT_STYLE               dots     dots|counts; anything else means dots
+#   ZEV_GIT_DOT_STAGED_MARKER   ●     ZEV_GIT_DOT_STAGED_COLOR   green  (dots)
+#   ZEV_GIT_DOT_DIRTY_MARKER    ●     ZEV_GIT_DOT_DIRTY_COLOR    red    (dots)
+#   ZEV_GIT_AHEAD_MARKER        ⇡     ZEV_GIT_AHEAD_COLOR        cyan
+#   ZEV_GIT_BEHIND_MARKER       ⇣     ZEV_GIT_BEHIND_COLOR       cyan
+#   ZEV_GIT_CONFLICTED_MARKER   ~     ZEV_GIT_CONFLICTED_COLOR   red    (counts)
+#   ZEV_GIT_STAGED_MARKER       +     ZEV_GIT_STAGED_COLOR       green  (counts)
+#   ZEV_GIT_UNSTAGED_MARKER     !     ZEV_GIT_UNSTAGED_COLOR     yellow (counts)
+#   ZEV_GIT_UNTRACKED_MARKER    ?     ZEV_GIT_UNTRACKED_COLOR    blue   (counts)
+#   ZEV_GIT_STASH_MARKER        ≡     ZEV_GIT_STASH_COLOR        8
+#   ZEV_GIT_CLEAN_MARKER        ✓     ZEV_GIT_CLEAN_COLOR        green  (counts)
+#   ZEV_GIT_BRANCH_COLOR        magenta
+#   ZEV_GIT_DETACHED_COLOR      yellow   (short SHA shown on a detached HEAD)
+#   ZEV_GIT_IGNORE_SUBMODULES   dirty    none|untracked|dirty|all; anything
+#                                        else means dirty (dirty skips the
+#                                        expensive scan inside submodules but
+#                                        still reports a moved submodule commit)
+#   ZEV_GIT_DISABLE             (unset)  1 = no git segment and no git jobs
+#
+# Untracked-file scanning, rename detection and core.fsmonitor follow your git
+# config (status.showUntrackedFiles=no helps in a huge repo).
+#
+# Limitations:
+#   - No timeout. A git that hangs forever means no updates for that repo
+#     until you cd to a different repo (at most one job per repo is in flight).
+#   - Jobs are never killed (a process substitution's PID is not known). A
+#     discarded job's worker dies of EPIPE when it prints, or fills the pipe
+#     buffer and exits if a child process inherited the read end; its git
+#     finishes its scan and exits.
+#   - '(detached)' is also a valid branch name; such a branch is shown as a
+#     detached HEAD.
+#   - Needs git >= 2.11 (porcelain v2); a git without --show-stash shows no
+#     stash count.
+
+emulate -L zsh
+
+typeset -g _zev_prompt_git_key=${_zev_prompt_git_key-}
+typeset -g _zev_prompt_git_fd=${_zev_prompt_git_fd-}
+typeset -gi _zev_prompt_git_gen=${_zev_prompt_git_gen:-0}
+typeset -gi _zev_prompt_git_pending=${_zev_prompt_git_pending:-0}
+typeset -ga _zev_prompt_git_fields
+typeset -g _zev_prompt_git=${_zev_prompt_git-}
+
+# Load the bodies now (rc 1 if already defined; ignored): the background job
+# is a forked child and inherits them, and the cost is paid once here.
+{ autoload +X _zev_prompt_git_precmd _zev_prompt_git_update \
+    _zev_prompt_git_root _zev_prompt_git_start _zev_prompt_git_handler \
+    _zev_prompt_git_worker _zev_prompt_git_parse _zev_prompt_git_format } 2>/dev/null
+
+if [[ -o zle ]]; then
+  autoload -Uz add-zsh-hook
+  add-zsh-hook precmd _zev_prompt_git_precmd
+fi
+return 0

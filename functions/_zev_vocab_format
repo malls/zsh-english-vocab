@@ -1,0 +1,17 @@
+emulate -L zsh
+# _zev_vocab_format [-c] WORD POS DEF ETY -- REPLY=one display line; -c adds
+# ANSI styling (bold word, dim pos and etymology). An empty ETY is omitted.
+integer c=0
+if [[ $1 == -c ]]; then
+  c=1
+  shift
+fi
+local w=$1 pos=$2 def=$3 ety=$4
+if (( c )); then
+  REPLY=$'\e[1m'$w$'\e[0m \e[2m'"($pos)"$'\e[0m'": $def"
+  [[ -n $ety ]] && REPLY+=$'\e[2m — '$ety$'\e[0m'
+else
+  REPLY="$w ($pos): $def"
+  [[ -n $ety ]] && REPLY+=$' — '$ety
+fi
+return 0

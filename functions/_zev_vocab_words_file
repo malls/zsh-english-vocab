@@ -1,0 +1,11 @@
+emulate -L zsh
+# _zev_vocab_words_file -- REPLY=path of the word list (TSV).
+if [[ -n ${ZEV_VOCAB_WORDS-} ]]; then
+  REPLY=$ZEV_VOCAB_WORDS
+elif [[ -n ${ZEV_ROOT-} ]]; then
+  REPLY=$ZEV_ROOT/data/words.tsv
+else
+  REPLY=
+  return 1
+fi
+return 0

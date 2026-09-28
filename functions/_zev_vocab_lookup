@@ -1,0 +1,26 @@
+emulate -L zsh
+# emulate does not reset a caller's no_multibyte; -i on non-ASCII needs it.
+setopt multibyte
+# _zev_vocab_lookup [-i] WORD -- REPLY=the entry's line, reply=(word pos def ety).
+# -i matches case-insensitively. Loads the list if _zev_vocab_lines is empty.
+# rc 1 if not found.
+local w tab=$'\t'
+integer ci=0 idx
+if [[ $1 == -i ]]; then
+  ci=1
+  shift
+fi
+w=$1
+[[ -n $w ]] || return 1
+(( $#_zev_vocab_lines )) || _zev_vocab_load || return 1
+# (Note: $'\t' is not expanded inside a subscript; use $tab.)
+if (( ci )); then
+  setopt extended_glob
+  idx=${_zev_vocab_lines[(i)(#i)${(b)w}${tab}*]}
+else
+  idx=${_zev_vocab_lines[(i)${(b)w}${tab}*]}
+fi
+(( idx <= $#_zev_vocab_lines )) || return 1
+REPLY=$_zev_vocab_lines[idx]
+reply=( "${(@ps:\t:)REPLY}" )
+return 0

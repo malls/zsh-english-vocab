@@ -1,0 +1,200 @@
+#!/usr/bin/env zsh
+# tools/lint-words -- validate the word list (data/words.tsv).
+#
+# Usage: tools/lint-words [--min N] [FILE]
+#
+# The normative definition of the word-list format is the help text below
+# (`tools/lint-words --help`). Standalone zsh; no external commands.
+# Exit status: 0 valid, 1 errors found, 2 usage error.
+
+emulate -R zsh
+setopt extendedglob
+
+typeset -r help_text='usage: tools/lint-words [--min N] [FILE]
+
+Checks a word list and reports every error as FILE:LINE: MESSAGE on stderr.
+FILE defaults to data/words.tsv in this repository. --min N also requires at
+least N entries (default 0: no count check).
+Exit status: 0 valid, 1 errors found, 2 usage error.
+
+Format of data/words.tsv (normative):
+- UTF-8, no BOM; text is NFC (precomposed accents). LF line endings; the file
+  ends with exactly one newline. No header, no comments, no blank lines --
+  every line is an entry.
+- Exactly 4 fields separated by single TAB characters:
+    word<TAB>pos<TAB>definition<TAB>etymology
+  No quoting or escaping; " is literal. Fields cannot contain TAB, CR or LF.
+- No empty fields. No leading or trailing whitespace on the line, and no space
+  next to a TAB. No double spaces, no non-breaking space (U+00A0), no control
+  or non-printable characters (e.g. U+200B, U+FEFF).
+- word: lowercase letters (any script), one or more, joined by single spaces,
+  hyphens or ASCII apostrophes. As a zsh extendedglob pattern:
+    [[:lower:]]##([ '\''-][[:lower:]]##)#
+  Examples: élan, sine qua non, willy-nilly, hors d'\''oeuvre.
+  Words are unique case-insensitively (compared with ${(L)word}).
+- pos is one of: n. v. adj. adv. prep. conj. interj. pron.
+- definition is at most 120 characters; etymology is at most 100 characters
+  (characters, not bytes).
+- Style (documented, not linted): one sense; definitions and etymologies
+  start lowercase unless the first word is a proper noun, with no trailing
+  period; etymologies usually start "from ..."; use straight double quotes for
+  glosses; no offensive entries or proper nouns.
+- Guarantee for readers: every line splits with "${(@ps:\t:)line}" into
+  exactly 4 non-empty fields and words are unique, so readers need no
+  defensive parsing.'
+
+# ---- locale: force UTF-8 so character classes and lengths are per character
+
+typeset -gx LC_ALL=C.UTF-8
+if (( ${#${:-é}} != 1 )); then
+  LC_ALL=en_US.UTF-8
+  if (( ${#${:-é}} != 1 )); then
+    print -ru2 -- "lint-words: no UTF-8 locale available"
+    exit 2
+  fi
+fi
+
+# ---- arguments -------------------------------------------------------------
+
+usage_error() {
+  print -ru2 -- "lint-words: $*"
+  exit 2
+}
+
+integer min=0
+typeset file=
+typeset -a files
+
+while (( $# )); do
+  case $1 in
+    -h|--help) print -r -- "$help_text"; exit 0 ;;
+    --min)
+      (( $# >= 2 )) || usage_error "--min requires a number"
+      [[ $2 == <-> ]] || usage_error "--min requires a non-negative integer, got \"${(V)2}\""
+      min=$2
+      shift ;;
+    --) shift; files+=("$@"); break ;;
+    -?*) usage_error "unknown option: ${(V)1}" ;;
+    *) files+=("$1") ;;
+  esac
+  shift
+done
+
+(( $#files > 1 )) && usage_error "expected at most one FILE, got $#files"
+if (( $#files )); then
+  file=$files[1]
+else
+  file=${0:A:h:h}/data/words.tsv
+fi
+[[ -f $file && -r $file ]] || usage_error "cannot read ${(V)file}"
+
+# ---- checks ----------------------------------------------------------------
+
+typeset -r tab=$'\t' cr=$'\r' nbsp=$'\xc2\xa0'
+typeset -r wordpat="[[:lower:]]##([ '-][[:lower:]]##)#"
+typeset -ra poses=(n. v. adj. adv. prep. conj. interj. pron.)
+typeset -ra fieldnames=(word pos definition etymology)
+
+integer n=0 errors=0 entries=0 nofinal=0 i
+typeset line rest pre c
+typeset -a f
+typeset -A seen
+
+err() {
+  print -ru2 -- "$file:$n: $*"
+  (( errors++ ))
+}
+
+while IFS= read -r line || { [[ -n $line ]] && nofinal=1 }; do
+  (( n++ ))
+
+  # 1. empty line
+  if [[ -z $line ]]; then
+    err "empty line"
+    continue
+  fi
+  (( entries++ ))
+
+  # 2. carriage return
+  if [[ $line == *$cr* ]]; then
+    err "carriage return (CRLF line ending?)"
+    line=${line//$cr}
+  fi
+
+  # 3./4. control characters, then invalid UTF-8 / non-printables
+  rest=${line//$tab}
+  if [[ $rest == *[[:cntrl:]]* ]]; then
+    pre=${rest%%[[:cntrl:]]*}
+    c=${rest[$#pre + 1]}
+    printf -v c 'U+%04X' "'$c"
+    err "control character $c"
+  elif [[ $rest == *[^[:print:]]* ]]; then
+    pre=${line%%[^[:print:]$tab]*}
+    err "invalid UTF-8 or non-printable character at column $(( $#pre + 1 ))"
+  fi
+
+  # 5. leading / trailing whitespace
+  [[ $line == [[:space:]]* ]] && err "leading whitespace"
+  [[ $line == *[[:space:]] ]] && err "trailing whitespace"
+
+  # 6. space next to a tab
+  [[ $line == *(" $tab"|"$tab ")* ]] && err "whitespace next to a tab"
+
+  # 7. double spaces, non-breaking spaces
+  [[ $line == *'  '* ]] && err "consecutive spaces"
+  [[ $line == *$nbsp* ]] && err "non-breaking space (U+00A0)"
+
+  # 8. field count
+  f=("${(@ps:\t:)line}")
+  if (( $#f != 4 )); then
+    err "expected 4 tab-separated fields, found $#f"
+    continue
+  fi
+
+  # 9. empty fields
+  for i in {1..4}; do
+    [[ -z $f[i] ]] && err "empty $fieldnames[i]"
+  done
+
+  # 10. word shape
+  if [[ -n $f[1] && $f[1] != ${~wordpat} ]]; then
+    err "word \"${(V)f[1]}\" must be lowercase letters joined by single spaces, hyphens or apostrophes"
+  fi
+
+  # 11. part of speech
+  if [[ -n $f[2] ]] && (( ! ${poses[(Ie)$f[2]]} )); then
+    err "part of speech \"${(V)f[2]}\" is not one of: $poses"
+  fi
+
+  # 12. lengths
+  (( ${#f[3]} > 120 )) && err "definition is ${#f[3]} characters (max 120)"
+  (( ${#f[4]} > 100 )) && err "etymology is ${#f[4]} characters (max 100)"
+
+  # 13. duplicates (case-insensitive)
+  if [[ -n $f[1] ]]; then
+    if (( ${+seen[${(L)f[1]}]} )); then
+      err "duplicate word \"${(V)f[1]}\" (first on line $seen[${(L)f[1]}])"
+    else
+      seen[${(L)f[1]}]=$n
+    fi
+  fi
+done < $file
+
+# ---- end of file -------------------------------------------------------------
+
+(( nofinal )) && err "missing final newline"
+if (( n == 0 )); then
+  print -ru2 -- "$file: file is empty"
+  (( errors++ ))
+fi
+if (( entries < min )); then
+  print -ru2 -- "$file: $entries entries, fewer than --min $min"
+  (( errors++ ))
+fi
+
+if (( errors )); then
+  print -ru2 -- "$file: $errors error${${errors:#1}:+s}"
+  exit 1
+fi
+print -r -- "$file: $entries entries OK"
+exit 0

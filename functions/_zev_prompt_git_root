@@ -1,0 +1,26 @@
+# _zev_prompt_git_root -- repo key for the current directory; result in REPLY
+# ('' = not in a repo). Never forks.
+#
+# Walks up from the physical cwd (${PWD:A}, symlinks resolved as git does) to
+# the first directory containing .git (a directory, or a file for worktrees and
+# submodules); that directory is the key. With GIT_DIR set, git decides what the
+# repo is, so the key is 'gitdir:$GIT_DIR:$GIT_WORK_TREE:<cwd>' and git always
+# runs. False positives (cwd inside .git/, GIT_CEILING_DIRECTORIES, a bogus .git
+# file) are harmless: git fails and the segment stays hidden.
+
+emulate -L zsh
+local d=${PWD:A}
+REPLY=
+if [[ -n ${GIT_DIR-} ]]; then
+  REPLY="gitdir:$GIT_DIR:${GIT_WORK_TREE-}:$d"
+  return 0
+fi
+while :; do
+  if [[ -e $d/.git ]]; then
+    REPLY=$d
+    return 0
+  fi
+  [[ $d == / || -z $d ]] && break
+  d=${d:h}
+done
+return 0

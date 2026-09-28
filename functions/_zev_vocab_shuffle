@@ -1,0 +1,14 @@
+emulate -L zsh
+# _zev_vocab_shuffle WORD... -- reply=uniform random permutation (Fisher-Yates,
+# 30 random bits per draw). Never call in a command substitution: a subshell
+# replays the parent's $RANDOM sequence.
+reply=( "$@" )
+integer i j n=$#reply
+local t
+for (( i = n; i > 1; i-- )); do
+  (( j = ((RANDOM << 15) | RANDOM) % i + 1 ))
+  t=$reply[i]
+  reply[i]=$reply[j]
+  reply[j]=$t
+done
+return 0

@@ -1,0 +1,17 @@
+emulate -L zsh
+# _zev_vocab_startup -- called by the plugin entry: print the word (word-wrapped
+# on a terminal), or nothing when suppressed. Once per shell. Always returns 0.
+local REPLY
+local -a reply _zev_vocab_lines
+(( ${+_zev_vocab_started} )) && return 0
+typeset -g _zev_vocab_started=1
+_zev_vocab_suppressed && return 0
+_zev_vocab_next 2>/dev/null || return 0
+if _zev_vocab_color; then
+  _zev_vocab_format -c "${reply[@]}"
+else
+  _zev_vocab_format "${reply[@]}"
+fi
+_zev_vocab_wrap "$REPLY"
+print -r -- $REPLY
+return 0

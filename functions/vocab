@@ -1,0 +1,42 @@
+emulate -L zsh
+# vocab [command] -- show, rotate, search and favorite vocabulary words.
+# Run "vocab help" for usage. rc 0 ok, 1 runtime failure, 2 usage error.
+#
+# emulate does not reset multibyte; case-insensitive matching of non-ASCII
+# words (search BÊTE) needs it, including in the _zev_vocab_* calls below.
+setopt multibyte
+# The locals below are dynamically scoped: nothing leaks into the user's shell.
+local REPLY
+local -a reply _zev_vocab_lines
+if (( ! $# )); then
+  _zev_vocab_cmd_show
+  return
+fi
+case $1 in
+  next)
+    shift
+    (( $# )) && { _zev_vocab_cmd_usage 'next takes no arguments'; return }
+    _zev_vocab_cmd_next ;;
+  search)
+    shift
+    _zev_vocab_cmd_search "$@" ;;
+  fav)
+    shift
+    _zev_vocab_cmd_fav "$@" ;;
+  unfav)
+    shift
+    _zev_vocab_cmd_unfav "$@" ;;
+  favs)
+    shift
+    (( $# )) && { _zev_vocab_cmd_usage 'favs takes no arguments'; return }
+    _zev_vocab_cmd_favs ;;
+  history)
+    shift
+    _zev_vocab_cmd_history "$@" ;;
+  help|-h|--help)
+    shift
+    (( $# )) && { _zev_vocab_cmd_usage 'help takes no arguments'; return }
+    _zev_vocab_cmd_help ;;
+  *)
+    _zev_vocab_cmd_usage "unknown command: $1" ;;
+esac

@@ -1,0 +1,70 @@
+emulate -L zsh
+# _zev_vocab_lock DIR -- lock DIR; REPLY=token for _zev_vocab_unlock.
+# rc 0 locked, 2 timeout (ZEV_VOCAB_LOCK_TIMEOUT seconds, default 1), 1 error.
+# Uses "zsystem flock" on DIR/lock when available, else a mkdir lock (DIR/lock.d).
+local d=$1 to=${ZEV_VOCAB_LOCK_TIMEOUT:-1} fd ld pid got
+float deadline
+integer rc tried=0 brk=0
+[[ -n $d && -d $d ]] || return 1
+[[ $to == <->(|.<->) ]] || to=1
+if [[ ${_ZEV_VOCAB_LOCK_IMPL-} != mkdir ]] && zmodload zsh/system 2>/dev/null &&
+    zsystem supports flock 2>/dev/null; then
+  # Never write to the lock file while it is locked (that releases the lock).
+  [[ -e $d/lock ]] || { : >> $d/lock } 2>/dev/null
+  zsystem flock -t $to -i 0.01 -f fd $d/lock 2>/dev/null
+  rc=$?
+  if (( rc == 0 )); then
+    REPLY=$fd
+    return 0
+  fi
+  (( rc == 2 )) && return 2
+  return 1
+fi
+
+# Fallback: mkdir lock with a pid file; stale locks are broken by rename so
+# only one process removes them.
+zmodload -F zsh/files b:zf_mkdir b:zf_rm b:zf_rmdir b:zf_mv 2>/dev/null
+zmodload zsh/zselect 2>/dev/null
+zmodload zsh/datetime 2>/dev/null
+ld=$d/lock.d
+(( deadline = EPOCHREALTIME + to ))
+while :; do
+  if zf_mkdir $ld 2>/dev/null; then
+    { print -r -- $$ >| $ld/pid } 2>/dev/null
+    REPLY=dir:$ld
+    return 0
+  fi
+  if [[ ! -d $ld ]]; then
+    # mkdir failed with no lock dir: raced with a release (retry), or the
+    # state dir is unwritable (error).
+    [[ -w $d ]] && (( EPOCHREALTIME < deadline )) || return 1
+    continue
+  fi
+  pid=
+  _zev_vocab_readfile $ld/pid && pid=${REPLY%%$'\n'*}
+  brk=0
+  if [[ -n $pid ]] && ! kill -0 $pid 2>/dev/null; then
+    brk=1                     # holder is gone: stale lock
+  elif (( EPOCHREALTIME >= deadline )); then
+    # No pid after a full timeout: abandoned between mkdir and the pid write.
+    [[ -z $pid ]] && (( ! tried )) || return 2
+    tried=1 brk=1
+  fi
+  if (( brk )); then
+    # Break by rename, then confirm we renamed the lock we judged stale:
+    # another breaker may already have replaced it with a live one, in
+    # which case put it back instead of removing it.
+    zf_rm -rf $ld.stale.$$ 2>/dev/null
+    if zf_mv $ld $ld.stale.$$ 2>/dev/null; then
+      got=
+      _zev_vocab_readfile $ld.stale.$$/pid && got=${REPLY%%$'\n'*}
+      if [[ $got == $pid ]]; then
+        zf_rm -rf $ld.stale.$$ 2>/dev/null
+      else
+        zf_mv $ld.stale.$$ $ld 2>/dev/null
+      fi
+    fi
+    continue
+  fi
+  zselect -t 1 2>/dev/null
+done

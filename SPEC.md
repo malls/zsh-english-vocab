@@ -21,7 +21,7 @@ zsh-english-vocab.zsh-theme    # theme
 functions/                     # autoloaded helpers (vocab command, rotation, git async)
 data/words.tsv                 # bundled word list
 tools/lint-words               # word-list linter
-tests/                         # zunit tests
+tests/                         # tests; run with tests/run (no deps)
 SPEC.md  README.md
 ```
 
@@ -61,14 +61,27 @@ and red on failure.
 
 ### Git markers (plain Unicode only; no Nerd Font)
 
+Two styles, chosen with `ZEV_GIT_STYLE`. Both show `⇡N` / `⇣N` (ahead / behind
+upstream) and `≡N` (stash entries).
+
+**`dots` (default; requested by Forrest after trying the theme):**
+`main ⇡1 ● ● ≡1`
+
 | Marker | Meaning |
 |--------|---------|
-| `⇡N` / `⇣N` | ahead / behind upstream |
+| green `●` | something is staged |
+| red `●` | unstaged, untracked or conflicted changes |
+| no dot | clean |
+
+**`counts`:** `main ⇡1 +2 !1 ?3 ≡1`
+
+| Marker | Meaning |
+|--------|---------|
+| `~N` | conflicted (unmerged; counted as neither staged nor unstaged) |
 | `+N` | staged |
 | `!N` | unstaged modifications |
 | `?N` | untracked |
-| `≡N` | stash entries |
-| `✓`  | clean (shown instead of the markers above) **(default)** |
+| `✓`  | clean: shown instead of `~ + ! ?` when all are zero; `⇡⇣≡` still shown |
 
 Colors come from the terminal's 16/256 palette via `%F{…}`; no truecolor
 requirement. All markers and colors can be overridden with `ZEV_*` variables.
@@ -97,14 +110,17 @@ Once, when the plugin loads in a new shell. It is skipped when:
 - `$TMUX` is set (never shown inside tmux)
 - `ZEV_VOCAB_DISABLE=1` is set **(default; a universal opt-out)**
 
-### Display: one logical line, wrapping allowed
+### Display: word-wrapped at word boundaries
 
 ```
 laconic (adj.): using very few words — from Greek Lakōnikos, "of Laconia" (Spartans were famously terse)
 ```
 
 Word in bold, part of speech dimmed, definition in normal weight, etymology dimmed
-after an em dash. Long lines wrap naturally; nothing is truncated.
+after an em dash. Nothing is truncated. On a terminal the entry is word-wrapped
+to the terminal width, so line breaks fall only between words (Forrest's
+request, ZEV-12); `ZEV_VOCAB_WIDTH` overrides the width (`0` turns wrapping off).
+Piped output keeps one line per entry.
 
 ### Rotation: random, no repeats
 
@@ -152,13 +168,20 @@ Include zsh completion for the subcommands and for word arguments.
 - **Format:** `data/words.tsv`, UTF-8, one entry per line, 4 tab-separated
   fields:
   `word<TAB>pos<TAB>definition<TAB>etymology`
+  No header, comments or blank lines; LF line endings with a final newline; no
+  quoting or escaping. `word` is lowercase letters (any script) joined by single
+  spaces, hyphens or apostrophes. Full rules: `tools/lint-words --help`.
 - **pos** must be one of `n.`, `v.`, `adj.`, `adv.`, `prep.`, `conj.`, `interj.`,
   `pron.`
-- **Size and level:** 1000+ words across difficulty levels, from useful everyday
-  words that are often misused, through GRE-level, to rare and delightful words.
-- **Source:** Claude writes the entries in batches (about 100–200 per batch);
-  Forrest spot-checks. One sense per word; definitions ≤ ~120 chars; etymology
-  ≤ ~100 chars.
+- **Size and level:** 1000+ **rare** words only (Forrest's decision after the
+  first batch: "not particularly obscure"). The bar is that a well-read adult
+  probably does not know the word: nothing from GRE/SAT lists or everyday
+  educated prose. It must still be attested in MW (incl. Unabridged), OED,
+  Collins or AH; archaic words are allowed if labeled. The shipped list has 1,076 entries.
+- **Source:** Claude writes the entries in batches (about 100–200 per batch). A
+  separate agent fact-checks every entry (sense, pos, etymology, attestation),
+  and Forrest spot-checks. One sense per word; definitions ≤ 120 chars;
+  etymology ≤ 100 chars.
 - No offensive or slur entries; no proper nouns.
 
 ### Linter (`tools/lint-words`)
@@ -169,15 +192,21 @@ Fails when any of these is true:
 - a word is duplicated (case-insensitive)
 - a pos is not in the allowed set
 - a line has leading or trailing whitespace, or contains CR characters
-- the list has fewer than 1000 entries (after the data task lands)
+- a definition is over 120 or an etymology over 100 characters
+- a line has invalid UTF-8, control or non-printable characters, double or
+  non-breaking spaces
+- the file is missing its final newline
+- the list has fewer than 1000 entries (the floor is set in
+  `tests/checks/lint-words`; ZEV-4 raises it to 1000)
 
 ---
 
 ## 5. Testing
 
-- **zunit** tests for: queue shuffle/pop/refill, skipping removed words, locking,
-  suppression rules, `vocab` subcommands (against a temp `XDG_STATE_HOME`),
-  parsing `git status --porcelain=v2` into markers (using fixture output), and
+- Tests (in-repo runner `tests/run`, zsh only, no external deps) for: queue
+  shuffle/pop/refill, skipping removed words, locking, suppression rules, `vocab`
+  subcommands (against a temp `XDG_STATE_HOME`), parsing
+  `git status --porcelain=v2` into markers (using fixture output), and
   formatting duration and exit codes.
 - **Word-list linter**, run as part of the test suite.
 - No CI for now.

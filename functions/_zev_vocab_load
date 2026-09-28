@@ -1,0 +1,10 @@
+emulate -L zsh
+# _zev_vocab_load -- read the word list into _zev_vocab_lines (one array element
+# per non-empty line). Assigned without typeset: a caller that did
+# "local -a _zev_vocab_lines" gets the array in its own local. Does not change
+# the caller's REPLY. rc 1 if the file is missing or has no lines.
+local REPLY
+_zev_vocab_words_file || return 1
+_zev_vocab_readfile $REPLY || return 1
+_zev_vocab_lines=( ${(f)REPLY} )
+(( $#_zev_vocab_lines ))

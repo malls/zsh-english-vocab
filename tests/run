@@ -1,0 +1,234 @@
+#!/usr/bin/env -S zsh -f
+# tests/run -- zsh-english-vocab test runner (zsh only, no external deps).
+# Run `tests/run --help` for usage; conventions are in CLAUDE.md.
+
+emulate -R zsh
+setopt extended_glob
+
+typeset -r ZEV_ROOT=${0:A:h:h}
+typeset -r PROG=tests/run
+
+usage() {
+  cat <<'EOF'
+usage: tests/run [options] [FILE...]
+
+Runs tests/*.test.zsh, then the executables in tests/checks/. With FILE
+arguments, runs exactly those files and skips the checks.
+
+  -v, --verbose      show every test's captured output, not only failures
+  -f, --filter GLOB  run only test functions whose name matches GLOB (zsh
+                     pattern); implies --no-checks
+  -k, --keep         keep temp dirs; print their path at the end
+      --no-checks    skip tests/checks
+      --checks-only  run only tests/checks
+  -h, --help         show this help
+
+Environment:
+  ZEV_TEST_CHECKS_DIR  checks directory (default: tests/checks)
+  NO_COLOR             disable color output
+
+Exit status: 0 all passed, 1 a test/check failed or a file errored,
+2 usage error or no tests selected.
+EOF
+}
+
+usage_error() {
+  print -ru2 -- "$PROG: $*"
+  print -ru2 -- "Try '$PROG --help'."
+  exit 2
+}
+
+# ---- options -------------------------------------------------------------
+
+integer verbose=0 keep=0 no_checks=0 checks_only=0 discovery=0
+typeset filter=
+typeset -a files
+
+while (( $# )); do
+  case $1 in
+    -v|--verbose)   verbose=1 ;;
+    -k|--keep)      keep=1 ;;
+    --no-checks)    no_checks=1 ;;
+    --checks-only)  checks_only=1 ;;
+    -h|--help)      usage; exit 0 ;;
+    -f|--filter)
+      (( $# >= 2 )) || usage_error "option $1 requires an argument"
+      filter=$2
+      shift ;;
+    --filter=*)     filter=${1#--filter=} ;;
+    --)             shift; files+=("$@"); break ;;
+    -?*)            usage_error "unknown option: $1" ;;
+    *)              files+=("$1") ;;
+  esac
+  shift
+done
+
+(( checks_only && $#files )) && usage_error "--checks-only does not take FILE arguments"
+[[ -n $filter ]] && no_checks=1
+
+# Resolve every path input now, relative to the caller's cwd.
+typeset -a resolved
+typeset f
+for f in $files; do
+  [[ -f $f ]] || usage_error "no such file: $f"
+  resolved+=(${f:A})
+done
+files=($resolved)
+
+typeset checks_dir
+if [[ -n ${ZEV_TEST_CHECKS_DIR-} ]]; then
+  checks_dir=${ZEV_TEST_CHECKS_DIR:A}
+  [[ -d $checks_dir ]] || usage_error "ZEV_TEST_CHECKS_DIR is not a directory: $ZEV_TEST_CHECKS_DIR"
+else
+  checks_dir=$ZEV_ROOT/tests/checks
+fi
+
+integer depth=${ZEV_TEST_DEPTH:-0}
+
+if (( checks_only )); then
+  files=()
+elif (( ! $#files )); then
+  discovery=1
+  files=($ZEV_ROOT/tests/*.test.zsh(N.on))
+  # Recursion guard: runner.test.zsh runs this runner; don't nest it forever.
+  (( depth >= 2 )) && files=(${files:#*/runner.test.zsh})
+fi
+
+integer run_checks=0
+(( checks_only || (discovery && ! no_checks) )) && run_checks=1
+
+# ---- color ---------------------------------------------------------------
+
+integer color=0
+[[ -t 1 && -z ${NO_COLOR-} ]] && color=1
+typeset c_ok= c_fail= c_off=
+if (( color )); then
+  c_ok=$'\e[32m' c_fail=$'\e[31m' c_off=$'\e[0m'
+fi
+
+# ---- temp root -----------------------------------------------------------
+
+typeset root
+root=$(mktemp -d "${${TMPDIR:-/tmp}%/}/zev-tests.XXXXXX") || {
+  print -ru2 -- "$PROG: mktemp failed"
+  exit 1
+}
+cleanup() { (( keep )) || rm -rf -- "$root" }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# ---- base environment for test files and checks --------------------------
+
+typeset -a base_env
+base_env=(
+  PATH=$PATH
+  USER=${USER:-${LOGNAME:-}}
+  LOGNAME=${LOGNAME:-${USER:-}}
+  LANG=${LANG:-en_US.UTF-8}
+  TERM=xterm-256color
+  TZ=UTC
+  TMPDIR=$root
+  ZEV_ROOT=$ZEV_ROOT
+  ZEV_FIXTURES=$ZEV_ROOT/tests/fixtures
+  ZEV_TEST_DEPTH=$(( depth + 1 ))
+  GIT_CONFIG_NOSYSTEM=1
+  GIT_AUTHOR_NAME='ZEV Test'
+  GIT_AUTHOR_EMAIL=test@example.invalid
+  GIT_COMMITTER_NAME='ZEV Test'
+  GIT_COMMITTER_EMAIL=test@example.invalid
+)
+[[ -n ${LC_ALL-} ]] && base_env+=(LC_ALL=$LC_ALL)
+typeset omz=${ZSH:-${HOME:-/nonexistent}/.oh-my-zsh}
+[[ -f $omz/oh-my-zsh.sh ]] && base_env+=(ZEV_OMZ_DIR=${omz:A})
+
+indent() {
+  local l
+  while IFS= read -r l || [[ -n $l ]]; do
+    print -r -- "        $l"
+  done < $1
+}
+
+# ---- tests ---------------------------------------------------------------
+
+integer t_pass=0 t_fail=0 t_skip=0 file_errors=0 n=0
+typeset file res err rel line
+typeset -a counts
+
+for file in $files; do
+  (( n++ ))
+  rel=${file#$ZEV_ROOT/}
+  res=$root/results.$n
+  err=$root/driver.$n.err
+  env -i $base_env \
+    ZEV_TEST_RESULTS=$res ZEV_TEST_FILTER=$filter \
+    ZEV_TEST_VERBOSE=$verbose ZEV_TEST_COLOR=$color \
+    zsh -f "$ZEV_ROOT/tests/lib/driver.zsh" "$file" </dev/null 2>$err
+  if [[ -s $res ]]; then
+    line="$(<$res)"
+    counts=(${=line})
+    (( t_pass += counts[-3], t_fail += counts[-2], t_skip += counts[-1] ))
+    if (( verbose )) && [[ -s $err ]]; then
+      print -r -- "        --- stderr ---"
+      indent $err
+    fi
+  else
+    (( file_errors++ ))
+    print -r -- "  ${c_fail}FAIL${c_off}  $rel (file error)"
+    [[ -s $err ]] && indent $err
+  fi
+done
+
+# ---- checks --------------------------------------------------------------
+
+integer c_pass=0 c_failn=0
+typeset check out
+if (( run_checks )); then
+  typeset -a checks
+  checks=($checks_dir/*(N.xon))
+  if (( $#checks )); then
+    print -r -- checks
+    mkdir -p -- $root/checks-home
+    for check in $checks; do
+      out=$root/check.${check:t}.out
+      ( cd -- "$ZEV_ROOT" && env -i $base_env HOME=$root/checks-home "$check" ) \
+        >$out 2>&1 </dev/null
+      if (( $? == 0 )); then
+        (( c_pass++ ))
+        print -r -- "  ${c_ok}ok${c_off}    ${check:t}"
+        if (( verbose )) && [[ -s $out ]]; then
+          print -r -- "        --- output ---"
+          indent $out
+        fi
+      else
+        (( c_failn++ ))
+        print -r -- "  ${c_fail}FAIL${c_off}  ${check:t}"
+        [[ -s $out ]] && indent $out
+      fi
+    done
+  fi
+fi
+
+# ---- summary -------------------------------------------------------------
+
+integer total=$(( t_pass + t_fail + t_skip ))
+if (( ! checks_only && total == 0 && file_errors == 0 )); then
+  print -ru2 -- "$PROG: no tests selected${filter:+ (filter '$filter' matched nothing)}"
+  exit 2
+fi
+
+(( keep )) && print -r -- "kept temp dir: $root"
+
+typeset summary=
+(( checks_only )) || summary="Tests: $t_pass passed, $(( t_fail + file_errors )) failed, $t_skip skipped"
+if (( run_checks )); then
+  summary+="${summary:+ | }Checks: $c_pass passed, $c_failn failed"
+fi
+print
+print -r -- "$summary"
+if (( t_fail + file_errors + c_failn )); then
+  print -r -- "${c_fail}FAILED${c_off}"
+  exit 1
+fi
+print -r -- "${c_ok}OK${c_off}"
+exit 0

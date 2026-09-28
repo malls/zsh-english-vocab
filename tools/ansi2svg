@@ -1,0 +1,524 @@
+#!/usr/bin/env python3
+"""ansi2svg -- render a captured terminal session (ANSI byte stream) as SVG.
+
+A minimal terminal emulator, just enough for zsh's line editor and an
+oh-my-zsh prompt. Stdlib only; runs on Python 3.9+. Used by
+tools/make-screenshot to build docs/screenshot.svg.
+"""
+
+import argparse
+import sys
+import unicodedata
+
+USAGE_EPILOG = """\
+Reads the raw terminal output (for example an expect log_file or a
+`script` typescript) on stdin and writes one SVG to stdout.
+
+Emulated: printable characters with deferred auto-wrap at COLS (East Asian
+wide characters take 2 cells, combining marks 0), CR, LF, BS, TAB, BEL;
+CSI A B C D E F G H f d K J P X @ m; ESC 7 / ESC 8 (save and restore the
+cursor), ESC M. SGR: 0, 1, 2, 22, 3/23, 4/24, 7/27, 30-37, 90-97, 39,
+40-47, 100-107, 49, 38;5;N / 48;5;N and 38;2;R;G;B / 48;2;R;G;B.
+Ignored: CSI with a private prefix (? > =), ESC =, ESC >, ESC ( X, and OSC
+strings up to BEL or ST. Any other CSI or ESC final byte is skipped with a
+one-line warning on stderr.
+
+Exit status: 0 on success, 2 on a usage error.
+"""
+
+# Layout (px).
+FONT_SIZE = 14
+CELL_W = 8.4
+LINE_H = 19
+PAD = 16
+BASELINE = 14  # from the top of a row
+FONT_FAMILY = "ui-monospace, SF Mono, Menlo, Consolas, DejaVu Sans Mono, monospace"
+
+# One-Dark-like palette.
+BG = "#282c34"
+FG = "#abb2bf"
+PALETTE16 = [
+    "#3f4451", "#e06c75", "#98c379", "#e5c07b",
+    "#61afef", "#c678dd", "#56b6c2", "#abb2bf",
+    "#7f848e", "#ff7a85", "#b5e890", "#f0d197",
+    "#8cc8ff", "#de99f0", "#7fd3dc", "#e6e6e6",
+]
+
+
+def color256(n):
+    """Hex color for xterm 256-color index n."""
+    if n < 16:
+        return PALETTE16[n]
+    if n < 232:
+        n -= 16
+        steps = [0, 95, 135, 175, 215, 255]
+        r, g, b = steps[n // 36], steps[(n // 6) % 6], steps[n % 6]
+        return "#%02x%02x%02x" % (r, g, b)
+    v = 8 + (n - 232) * 10
+    return "#%02x%02x%02x" % (v, v, v)
+
+
+class Style(object):
+    __slots__ = ("fg", "bg", "bold", "dim", "italic", "underline", "reverse")
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.fg = None  # None = default, else "#rrggbb"
+        self.bg = None
+        self.bold = False
+        self.dim = False
+        self.italic = False
+        self.underline = False
+        self.reverse = False
+
+    def key(self):
+        return (self.fg, self.bg, self.bold, self.dim, self.italic,
+                self.underline, self.reverse)
+
+
+DEFAULT_KEY = Style().key()
+
+
+class Cell(object):
+    __slots__ = ("ch", "style", "cont")
+
+    def __init__(self, ch=" ", style=DEFAULT_KEY, cont=False):
+        self.ch = ch        # the character(s); combining marks appended
+        self.style = style  # Style.key() tuple
+        self.cont = cont    # True for the right half of a wide character
+
+
+class Screen(object):
+    def __init__(self, cols, rows):
+        self.cols = cols
+        self.rows = rows
+        self.lines = []   # grows as needed; absolute row numbers
+        self.top = 0      # first row of the visible screen
+        self.x = 0
+        self.y = 0
+        self.wrap_pending = False
+        self.style = Style()
+        self.saved = (0, 0)
+        self.warned = set()
+
+    # -- grid helpers ------------------------------------------------------
+    def line(self, y):
+        while len(self.lines) <= y:
+            self.lines.append([Cell() for _ in range(self.cols)])
+        return self.lines[y]
+
+    def blank(self):
+        # Erased cells keep the current background (as xterm does).
+        st = Style()
+        st.bg = self.style.bg
+        return Cell(" ", st.key())
+
+    def warn(self, what):
+        if what not in self.warned:
+            self.warned.add(what)
+            sys.stderr.write("ansi2svg: warning: unhandled %s\n" % what)
+
+    def set_y(self, y):
+        self.y = max(self.top, min(y, self.top + self.rows - 1))
+
+    def linefeed(self):
+        self.y += 1
+        if self.y >= self.top + self.rows:
+            self.top = self.y - self.rows + 1
+        self.line(self.y)
+
+    # -- output ------------------------------------------------------------
+    def put(self, ch):
+        if unicodedata.combining(ch):
+            x = self.x - 1 if not self.wrap_pending else self.x
+            if x >= 0:
+                row = self.line(self.y)
+                while x > 0 and row[x].cont:
+                    x -= 1
+                row[x].ch += ch
+            return
+        width = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+        if self.wrap_pending or self.x + width > self.cols:
+            self.x = 0
+            self.linefeed()
+            self.wrap_pending = False
+        row = self.line(self.y)
+        key = self.style.key()
+        # Overwriting half of a wide character clears the other half.
+        if row[self.x].cont and self.x > 0:
+            row[self.x - 1] = Cell(" ", row[self.x - 1].style)
+        row[self.x] = Cell(ch, key)
+        if width == 2:
+            row[self.x + 1] = Cell("", key, cont=True)
+        if self.x + width < self.cols and row[self.x + width].cont:
+            row[self.x + width] = Cell(" ", row[self.x + width].style)
+        if self.x + width >= self.cols:
+            self.x = self.cols - 1
+            self.wrap_pending = True
+        else:
+            self.x += width
+
+    def erase_line(self, mode):
+        row = self.line(self.y)
+        if mode == 0:
+            rng = range(self.x, self.cols)
+        elif mode == 1:
+            rng = range(0, self.x + 1)
+        else:
+            rng = range(self.cols)
+        for i in rng:
+            row[i] = self.blank()
+
+    def erase_screen(self, mode):
+        self.erase_line(mode)
+        if mode == 0:
+            ys = range(self.y + 1, len(self.lines))
+        elif mode == 1:
+            ys = range(self.top, self.y)
+        else:
+            ys = range(self.top, len(self.lines))
+        for y in ys:
+            row = self.line(y)
+            for i in range(self.cols):
+                row[i] = self.blank()
+
+    def delete_chars(self, n):
+        row = self.line(self.y)
+        n = min(n, self.cols - self.x)
+        del row[self.x:self.x + n]
+        row.extend(self.blank() for _ in range(n))
+
+    def insert_chars(self, n):
+        row = self.line(self.y)
+        n = min(n, self.cols - self.x)
+        for _ in range(n):
+            row.insert(self.x, self.blank())
+        del row[self.cols:]
+
+    def sgr(self, params):
+        st = self.style
+        if not params:
+            params = [0]
+        i = 0
+        while i < len(params):
+            p = params[i]
+            if p == 0:
+                st.reset()
+            elif p == 1:
+                st.bold = True
+            elif p == 2:
+                st.dim = True
+            elif p == 22:
+                st.bold = st.dim = False
+            elif p == 3:
+                st.italic = True
+            elif p == 23:
+                st.italic = False
+            elif p == 4:
+                st.underline = True
+            elif p == 24:
+                st.underline = False
+            elif p == 7:
+                st.reverse = True
+            elif p == 27:
+                st.reverse = False
+            elif 30 <= p <= 37:
+                st.fg = PALETTE16[p - 30]
+            elif 90 <= p <= 97:
+                st.fg = PALETTE16[p - 90 + 8]
+            elif p == 39:
+                st.fg = None
+            elif 40 <= p <= 47:
+                st.bg = PALETTE16[p - 40]
+            elif 100 <= p <= 107:
+                st.bg = PALETTE16[p - 100 + 8]
+            elif p == 49:
+                st.bg = None
+            elif p in (38, 48):
+                col = None
+                if i + 2 < len(params) and params[i + 1] == 5:
+                    col = color256(params[i + 2] % 256)
+                    i += 2
+                elif i + 1 < len(params) and params[i + 1] == 2 and i + 4 < len(params):
+                    r, g, b = (min(v, 255) for v in params[i + 2:i + 5])
+                    col = "#%02x%02x%02x" % (r, g, b)
+                    i += 4
+                else:
+                    self.warn("SGR %d form" % p)
+                    return
+                if p == 38:
+                    st.fg = col
+                else:
+                    st.bg = col
+            else:
+                self.warn("SGR %d" % p)
+            i += 1
+
+    def csi(self, private, params_s, final):
+        if private:
+            return  # e.g. CSI ?2004h, CSI >4;1m: modes we don't emulate
+        try:
+            params = [int(p) if p else 0 for p in params_s.split(";")] if params_s else []
+        except ValueError:
+            self.warn("CSI parameters %r" % params_s)
+            return
+
+        def arg(i=0, default=1):
+            v = params[i] if len(params) > i else 0
+            return v if v else default
+
+        if final != "m":
+            self.wrap_pending = False
+        if final == "m":
+            self.sgr(params)
+        elif final == "A":
+            self.set_y(self.y - arg())
+        elif final == "B":
+            self.set_y(self.y + arg())
+            self.line(self.y)
+        elif final == "C":
+            self.x = min(self.cols - 1, self.x + arg())
+        elif final == "D":
+            self.x = max(0, self.x - arg())
+        elif final == "E":
+            self.set_y(self.y + arg())
+            self.x = 0
+        elif final == "F":
+            self.set_y(self.y - arg())
+            self.x = 0
+        elif final == "G":
+            self.x = max(0, min(self.cols - 1, arg() - 1))
+        elif final in "Hf":
+            self.set_y(self.top + arg(0) - 1)
+            self.line(self.y)
+            self.x = max(0, min(self.cols - 1, arg(1) - 1))
+        elif final == "d":
+            self.set_y(self.top + arg() - 1)
+            self.line(self.y)
+        elif final == "K":
+            self.erase_line(arg(0, 0))
+        elif final == "J":
+            self.erase_screen(arg(0, 0))
+        elif final == "P":
+            self.delete_chars(arg())
+        elif final == "@":
+            self.insert_chars(arg())
+        elif final == "X":
+            row = self.line(self.y)
+            for i in range(self.x, min(self.cols, self.x + arg())):
+                row[i] = self.blank()
+        else:
+            self.warn("CSI final %r" % final)
+
+    def feed(self, text):
+        i, n = 0, len(text)
+        while i < n:
+            c = text[i]
+            o = ord(c)
+            if c == "\x1b":
+                if i + 1 >= n:
+                    break
+                d = text[i + 1]
+                if d == "[":
+                    j = i + 2
+                    private = ""
+                    if j < n and text[j] in "?<=>":
+                        private = text[j]
+                        j += 1
+                    k = j
+                    while k < n and (text[k].isdigit() or text[k] in ";:"):
+                        k += 1
+                    while k < n and 0x20 <= ord(text[k]) <= 0x2f:  # intermediates
+                        private = private or text[k]
+                        k += 1
+                    if k >= n:
+                        break
+                    self.csi(private, text[j:k].replace(":", ";").rstrip(" !\"#$%&'()*+,-./"),
+                             text[k])
+                    i = k + 1
+                    continue
+                if d in "]PX^_":  # OSC / DCS / SOS / PM / APC: skip to BEL or ST
+                    k = i + 2
+                    while k < n:
+                        if text[k] == "\x07":
+                            k += 1
+                            break
+                        if text[k] == "\x1b" and k + 1 < n and text[k + 1] == "\\":
+                            k += 2
+                            break
+                        k += 1
+                    i = k
+                    continue
+                if d in "()*+":  # charset designation: one more byte
+                    i += 3
+                    continue
+                if d in "=>":
+                    pass
+                elif d == "7":
+                    self.saved = (self.x, self.y)
+                elif d == "8":
+                    self.x, self.y = self.saved
+                    self.wrap_pending = False
+                elif d == "M":
+                    self.set_y(self.y - 1)
+                elif d == "D":
+                    self.linefeed()
+                elif d == "E":
+                    self.x = 0
+                    self.linefeed()
+                else:
+                    self.warn("ESC final %r" % d)
+                i += 2
+                continue
+            if c == "\r":
+                self.x = 0
+                self.wrap_pending = False
+            elif c in "\n\x0b\x0c":
+                self.linefeed()
+                self.wrap_pending = False
+            elif c == "\b":
+                if self.wrap_pending:
+                    self.wrap_pending = False
+                else:
+                    self.x = max(0, self.x - 1)
+            elif c == "\t":
+                self.x = min(self.cols - 1, (self.x // 8 + 1) * 8)
+            elif o < 0x20 or o == 0x7f or 0x80 <= o < 0xa0:
+                pass  # BEL, SO, SI and other controls
+            else:
+                self.put(c)
+            i += 1
+
+
+def esc_text(s):
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def esc_attr(s):
+    return esc_text(s).replace('"', "&quot;")
+
+
+def fmt(v):
+    s = ("%.2f" % v).rstrip("0").rstrip(".")
+    return s if s else "0"
+
+
+def render(screen, title):
+    # Trim trailing empty rows.
+    def row_used(row):
+        return any(c.ch.strip() or c.style[1] is not None or c.style[6]
+                   for c in row if not c.cont)
+
+    rows = list(screen.lines)
+    while rows and not row_used(rows[-1]):
+        rows.pop()
+    nrows = max(1, len(rows))
+    cols = screen.cols
+    width = PAD * 2 + cols * CELL_W
+    height = PAD * 2 + nrows * LINE_H
+
+    out = []
+    out.append('<svg xmlns="http://www.w3.org/2000/svg" width="%s" height="%s" '
+               'viewBox="0 0 %s %s" role="img" aria-labelledby="zev-title">'
+               % (fmt(width), fmt(height), fmt(width), fmt(height)))
+    out.append('<title id="zev-title">%s</title>' % esc_text(title))
+    out.append('<rect width="100%%" height="100%%" rx="8" ry="8" fill="%s"/>' % BG)
+    out.append('<g font-family="%s" font-size="%d" xml:space="preserve" '
+               'style="white-space:pre">' % (esc_attr(FONT_FAMILY), FONT_SIZE))
+
+    for y, row in enumerate(rows):
+        top = PAD + y * LINE_H
+        base = top + BASELINE
+
+        def colors(key):
+            fg, bg, _b, _d, _i, _u, rev = key
+            fg = fg or FG
+            if rev:
+                return (bg or BG), fg
+            return fg, bg
+
+        # Background rects (non-default background or reverse video).
+        x = 0
+        while x < cols:
+            _fg, bg = colors(row[x].style)
+            if bg is None:
+                x += 1
+                continue
+            start = x
+            while x < cols and colors(row[x].style)[1] == bg:
+                x += 1
+            out.append('<rect x="%s" y="%s" width="%s" height="%d" fill="%s"/>'
+                       % (fmt(PAD + start * CELL_W), fmt(top), fmt((x - start) * CELL_W),
+                          LINE_H, bg))
+
+        # Text runs: cells with the same style, including the spaces between
+        # them (white-space: pre keeps those); trailing spaces are dropped. A
+        # cell with combining marks gets its own element, since its x list
+        # would not line up with the characters otherwise.
+        x = 0
+        while x < cols:
+            cell = row[x]
+            if cell.cont or not cell.ch.strip():
+                x += 1
+                continue
+            key = cell.style
+            xs, chars = [], []
+            while x < cols:
+                c = row[x]
+                if c.cont:
+                    x += 1
+                    continue
+                if c.style != key or (len(c.ch) > 1 and xs):
+                    break
+                xs.append(fmt(PAD + x * CELL_W))
+                chars.append(c.ch)
+                x += 1
+                if len(c.ch) > 1:
+                    break
+            while not chars[-1].strip():
+                chars.pop()
+                xs.pop()
+            fg, _bg = colors(key)
+            attrs = ['x="%s"' % " ".join(xs), 'y="%s"' % fmt(base), 'fill="%s"' % fg]
+            if key[2]:
+                attrs.append('font-weight="bold"')
+            if key[3]:
+                attrs.append('fill-opacity="0.6"')
+            if key[4]:
+                attrs.append('font-style="italic"')
+            if key[5]:
+                attrs.append('text-decoration="underline"')
+            out.append("<text %s>%s</text>" % (" ".join(attrs), esc_text("".join(chars))))
+
+    out.append("</g>")
+    out.append("</svg>")
+    return "\n".join(out) + "\n"
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(
+        prog="tools/ansi2svg",
+        description="Render a captured terminal session (ANSI) from stdin as an SVG on stdout.",
+        epilog=USAGE_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--cols", type=int, default=100,
+                    help="terminal width in cells; must equal the pty's (default 100)")
+    ap.add_argument("--rows", type=int, default=30,
+                    help="terminal height in rows, for scrolling and CSI H (default 30)")
+    ap.add_argument("--title", default="zsh-english-vocab prompt",
+                    help="SVG <title> text (default: %(default)s)")
+    args = ap.parse_args(argv)
+    if args.cols < 1 or args.rows < 1:
+        ap.error("--cols and --rows must be positive")
+
+    data = sys.stdin.buffer.read().decode("utf-8", errors="replace")
+    screen = Screen(args.cols, args.rows)
+    screen.feed(data)
+    sys.stdout.write(render(screen, args.title))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

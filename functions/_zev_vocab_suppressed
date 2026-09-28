@@ -1,0 +1,21 @@
+emulate -L zsh
+# _zev_vocab_suppressed -- rc 0 if the startup word must not be shown;
+# REPLY=reason (disabled, tmux, ssh, noninteractive, notty). Cheapest first.
+REPLY=
+if [[ -n ${ZEV_VOCAB_DISABLE-} && ${ZEV_VOCAB_DISABLE} != 0 ]]; then
+  REPLY=disabled
+elif [[ -n ${TMUX-} ]]; then
+  REPLY=tmux
+elif [[ -n ${SSH_CONNECTION-} || -n ${SSH_TTY-} ]]; then
+  REPLY=ssh
+elif [[ ${_ZEV_VOCAB_ASSUME_TTY-} == 1 ]]; then
+  return 1
+elif [[ ! -o interactive ]]; then
+  REPLY=noninteractive
+elif [[ ! -t 1 ]]; then
+  # e.g. "zsh -i -c" spawned by editors/agents to read the environment.
+  REPLY=notty
+else
+  return 1
+fi
+return 0
