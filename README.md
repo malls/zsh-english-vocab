@@ -216,20 +216,25 @@ usage: vocab [command]
 - Tab completion covers the subcommands, words from the list (`search`,
   `fav`), and your favorites (`unfav`).
 
-Example:
+Example, in an 80-column terminal:
 
 ```
 ❯ vocab next
-petrichor (n.): the earthy scent produced when rain falls on dry ground — coined in 1964 from Greek petra "stone" + ichōr, the fluid in the veins of the gods
+petrichor (n.): the earthy scent produced when rain falls on dry ground — coined
+in 1964 from Greek petra "stone" + ichōr, the fluid in the veins of the gods
 ❯ vocab fav
 Added to favorites: petrichor
 ❯ vocab search -d drizzle
-mizzle (v.): to rain in very fine drops; to drizzle — from Middle English misellen; compare Low German miseln "to drizzle"
+mizzle (v.): to rain in very fine drops; to drizzle — from Middle English
+misellen; compare Low German miseln "to drizzle"
 ❯ vocab next
-widdershins (adv.): in a direction contrary to the sun's course; counterclockwise — from Middle Low German weddersinnes "against the direction"
+widdershins (adv.): in a direction contrary to the sun's course;
+counterclockwise — from Middle Low German weddersinnes "against the direction"
 ❯ vocab history 2
-2026-09-27 23:25  petrichor (n.): the earthy scent produced when rain falls on dry ground
-2026-09-27 23:25  widdershins (adv.): in a direction contrary to the sun's course; counterclockwise
+2026-09-27 23:25  petrichor (n.): the earthy scent produced when rain falls on
+dry ground
+2026-09-27 23:25  widdershins (adv.): in a direction contrary to the sun's
+course; counterclockwise
 ```
 
 ## Configuration

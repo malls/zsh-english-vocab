@@ -21,8 +21,11 @@ zsh-english-vocab.zsh-theme    # theme
 functions/                     # autoloaded helpers (vocab command, rotation, git async)
 data/words.tsv                 # bundled word list
 tools/lint-words               # word-list linter
+tools/bench-vocab              # startup-cost benchmark
+tools/make-screenshot          # regenerates docs/screenshot.svg (uses tools/ansi2svg)
 tests/                         # tests; run with tests/run (no deps)
-SPEC.md  README.md
+docs/screenshot.svg
+SPEC.md  README.md  CLAUDE.md  LICENSE
 ```
 
 Resulting `~/.zshrc`:
@@ -34,8 +37,6 @@ plugins=(git zsh-english-vocab)
 
 Keep `git` in `plugins` for its aliases. The theme does not depend on it.
 
-> Note: `~/.zshrc` currently sets `ZSH_THEME="bol"`, which is not installed.
-
 ---
 
 ## 2. Theme
@@ -43,7 +44,7 @@ Keep `git` in `plugins` for its aliases. The theme does not depend on it.
 ### Layout: two lines, no RPROMPT
 
 ```
-~/Code/zsh-english-vocab  main ⇡1 +2 !1 ?3 ≡1  took 4s  14:32
+~/Code/zsh-english-vocab  main ⇡1 ● ● ≡1  took 4s  14:32
 [1] ❯
 ```
 
@@ -91,9 +92,9 @@ requirement. All markers and colors can be overridden with `ZEV_*` variables.
 - The prompt must never wait on git. Draw the prompt immediately, run
   `git status --porcelain=v2 --branch --show-stash` (one call) in the background,
   then refresh the prompt with `zle reset-prompt` when the result arrives.
-- Implement with zsh built-ins (`zle -F` on a background fd) rather than a vendored
-  library, unless planning shows a strong reason to vendor `zsh-async` (MIT).
-- On `cd`, show the previous repo's status dimmed (or blank) until the new result
+- Implemented with zsh built-ins (`zle -F` on a background fd); no vendored
+  library.
+- On `cd` into a different repo, blank the segment until the new result
   arrives; never show stale status for a different repo.
 - Discard results from a previous prompt if a newer job has started.
 
@@ -108,18 +109,22 @@ Once, when the plugin loads in a new shell. It is skipped when:
 - the shell is not interactive (`[[ -o interactive ]]` is false)
 - `$SSH_CONNECTION` / `$SSH_TTY` is set
 - `$TMUX` is set (never shown inside tmux)
-- `ZEV_VOCAB_DISABLE=1` is set **(default; a universal opt-out)**
+- stdout is not a terminal (e.g. `zsh -i -c` spawned by an editor or another
+  tool to read the environment)
+- `ZEV_VOCAB_DISABLE` is set to anything other than empty or `0` **(default; a
+  universal opt-out)**
 
 ### Display: word-wrapped at word boundaries
 
 ```
-laconic (adj.): using very few words — from Greek Lakōnikos, "of Laconia" (Spartans were famously terse)
+petrichor (n.): the earthy scent produced when rain falls on dry ground — coined
+in 1964 from Greek petra "stone" + ichōr, the fluid in the veins of the gods
 ```
 
 Word in bold, part of speech dimmed, definition in normal weight, etymology dimmed
 after an em dash. Nothing is truncated. On a terminal the entry is word-wrapped
 to the terminal width, so line breaks fall only between words (Forrest's
-request, ZEV-12); `ZEV_VOCAB_WIDTH` overrides the width (`0` turns wrapping off).
+request); `ZEV_VOCAB_WIDTH` overrides the width (`0` turns wrapping off).
 Piped output keeps one line per entry.
 
 ### Rotation: random, no repeats
@@ -145,6 +150,7 @@ Piped output keeps one line per entry.
 | `current` | the word shown most recently |
 | `history` | `ISO-8601 timestamp<TAB>word`, append-only |
 | `favorites` | one word per line |
+| `lock` | lock file (empty) |
 
 ### `vocab` command
 
@@ -177,7 +183,7 @@ Include zsh completion for the subcommands and for word arguments.
   first batch: "not particularly obscure"). The bar is that a well-read adult
   probably does not know the word: nothing from GRE/SAT lists or everyday
   educated prose. It must still be attested in MW (incl. Unabridged), OED,
-  Collins or AH; archaic words are allowed if labeled. The shipped list has 1,076 entries.
+  Collins or AH; archaic words are allowed if labeled. The shipped list has over 1,000 entries.
 - **Source:** Claude writes the entries in batches (about 100–200 per batch). A
   separate agent fact-checks every entry (sense, pos, etymology, attestation),
   and Forrest spot-checks. One sense per word; definitions ≤ 120 chars;
@@ -197,7 +203,7 @@ Fails when any of these is true:
   non-breaking spaces
 - the file is missing its final newline
 - the list has fewer than 1000 entries (the floor is set in
-  `tests/checks/lint-words`; ZEV-4 raises it to 1000)
+  `tests/checks/lint-words`; currently 1000)
 
 ---
 
