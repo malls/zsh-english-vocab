@@ -69,9 +69,9 @@ test_path_format_home_edge_cases() {
   pf /Users/fo/x /Users/f/ short /U/f/x
 }
 
-test_path_format_unknown_style_is_short() {
-  pf /usr/local/bin /Users/f bogus /u/l/bin
-  pf /Users/f/Code/proj /Users/f '' '~/C/proj'
+test_path_format_unknown_style_is_full() {
+  pf /usr/local/bin /Users/f bogus /usr/local/bin
+  pf /Users/f/Code/proj /Users/f '' '~/Code/proj'
 }
 
 # ---- duration_format -----------------------------------------------------
@@ -332,10 +332,10 @@ test_flow_path_from_pwd_and_home() {
   cd "$HOME/Code/proj"
   state '' '' '' '' 0
   _zev_prompt_precmd
-  assert_equal "$_zev_prompt_path" '~/C/proj'
-  ZEV_PATH_STYLE=full
+  assert_equal "$_zev_prompt_path" '~/Code/proj' "default is full"
+  ZEV_PATH_STYLE=short
   _zev_prompt_precmd
-  assert_equal "$_zev_prompt_path" '~/Code/proj'
+  assert_equal "$_zev_prompt_path" '~/C/proj'
   cd /
   _zev_prompt_precmd
   assert_equal "$_zev_prompt_path" /

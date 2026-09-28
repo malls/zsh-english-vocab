@@ -85,7 +85,7 @@ Other plugin managers may work, but are not tested.
 ## The prompt
 
 ```
-~/C/zsh-english-vocab  main ⇡1 ● ● ≡1  took 4s  14:32
+~/Code/zsh-english-vocab  main ⇡1 ● ● ≡1  took 4s  14:32
 [1] ❯
 ```
 
@@ -93,7 +93,7 @@ Line 1:
 
 | Segment | Shows |
 |---------|-------|
-| Path | `$PWD` with `~` for your home. Each directory but the last is shortened to its first character (two for dot-dirs: `.config` → `.c`). `ZEV_PATH_STYLE=full` shows the full path |
+| Path | The full `$PWD`, with `~` for your home, so it can be copied and pasted into a shell. `ZEV_PATH_STYLE=short` shortens each directory but the last to its first character (two for dot-dirs): `~/C/zsh-english-vocab` |
 | Git | Branch (or the short SHA on a detached HEAD), ahead/behind, then the status markers below. Hidden outside a repo |
 | Duration | `took 4s`, `took 1m4s`, `took 1h0m0s`: only when the last command ran for at least `ZEV_DURATION_THRESHOLD` seconds (default 3) |
 | Clock | `HH:MM`: the time the prompt was drawn |
@@ -250,7 +250,7 @@ Set these in `~/.zshrc`.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `ZEV_PATH_STYLE` | `short` | `full` = no shortening; anything else = short |
+| `ZEV_PATH_STYLE` | `full` | `short` = shorten directories; anything else = full |
 | `ZEV_PATH_COLOR` | `blue` | path color |
 | `ZEV_DURATION_THRESHOLD` | `3` | seconds (integer or decimal); show the duration at or above this. Empty or invalid means 3 |
 | `ZEV_DURATION_PREFIX` | `took ` | text before the duration |
@@ -315,7 +315,7 @@ makes the status much cheaper; `ZEV_GIT_DISABLE=1` turns the segment off.
 
 ```zsh
 # ~/.zshrc
-ZEV_PATH_STYLE=full
+ZEV_PATH_STYLE=short
 ZEV_DURATION_THRESHOLD=10
 ZEV_GIT_STYLE=counts
 ZEV_GIT_UNTRACKED_MARKER='…'

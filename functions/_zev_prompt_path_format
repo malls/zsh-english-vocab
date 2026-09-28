@@ -1,10 +1,10 @@
 # _zev_prompt_path_format PWD HOME STYLE -- display path; result in REPLY.
 #
 # HOME (trailing slashes ignored; '/' or empty means no ~ substitution) is
-# replaced by '~' when PWD is HOME or below it. STYLE 'full' keeps every
-# directory name; any other STYLE shortens each directory except the last to
-# its first character (first two for dot-directories: .config -> .c). The
-# result is raw (unescaped); _zev_prompt_render escapes it.
+# replaced by '~' when PWD is HOME or below it. STYLE 'short' shortens each
+# directory except the last to its first character (first two for
+# dot-directories: .config -> .c); any other STYLE keeps every directory name.
+# The result is raw (unescaped); _zev_prompt_render escapes it.
 
 emulate -L zsh
 local pwd=$1 home=$2 style=$3 prefix= rest p
@@ -26,7 +26,7 @@ if [[ -n $home ]]; then
   fi
 fi
 
-if [[ $style == full ]]; then
+if [[ $style != short ]]; then
   REPLY=$prefix$rest
   return 0
 fi

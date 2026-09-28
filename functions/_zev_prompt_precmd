@@ -47,7 +47,7 @@ else
   typeset -g _zev_prompt_exit=0 _zev_prompt_duration=
 fi
 
-_zev_prompt_path_format "$PWD" "$HOME" "${ZEV_PATH_STYLE-short}"
+_zev_prompt_path_format "$PWD" "$HOME" "${ZEV_PATH_STYLE-full}"
 typeset -g _zev_prompt_path=$REPLY
 
 fmt=${ZEV_CLOCK_FORMAT-%H:%M}

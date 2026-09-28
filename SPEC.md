@@ -43,7 +43,7 @@ Keep `git` in `plugins` for its aliases. The theme does not depend on it.
 ### Layout: two lines, no RPROMPT
 
 ```
-~/C/zsh-english-vocab  main ⇡1 +2 !1 ?3 ≡1  took 4s  14:32
+~/Code/zsh-english-vocab  main ⇡1 +2 !1 ?3 ≡1  took 4s  14:32
 [1] ❯
 ```
 
@@ -51,7 +51,7 @@ Keep `git` in `plugins` for its aliases. The theme does not depend on it.
 
 | Segment  | Details |
 |----------|---------|
-| Path     | `$PWD` with `~` substitution, intermediate dirs shortened to their first char (`~/C/zsh-english-vocab`); last dir always in full. Set `ZEV_PATH_STYLE=full` for the full path |
+| Path     | Full `$PWD` with `~` substitution (`~/Code/zsh-english-vocab`), so it can be copied. Set `ZEV_PATH_STYLE=short` to shorten intermediate dirs to their first char (`~/C/zsh-english-vocab`) |
 | Git      | Branch (or short SHA if detached), ahead/behind, then status markers. Hidden outside repos |
 | Duration | `took Ns` / `took 1m4s`: only if the last command ran ≥ `ZEV_DURATION_THRESHOLD` seconds (default 3) |
 | Clock    | `HH:MM`, time the prompt was drawn |

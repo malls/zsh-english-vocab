@@ -6,7 +6,8 @@
 # Settings (read at every prompt, so changes apply at the next one; an unset
 # variable uses the default; a color set to empty means no color):
 #
-#   ZEV_PATH_STYLE              short   'full' = no shortening; anything else = short
+#   ZEV_PATH_STYLE              full    'short' = shorten directories;
+#                                       anything else = full
 #   ZEV_PATH_COLOR              blue
 #   ZEV_DURATION_THRESHOLD      3       seconds (integer or decimal); show
 #                                       'took ...' only at or above this;
