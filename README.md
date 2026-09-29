@@ -330,7 +330,7 @@ source $ZSH/oh-my-zsh.sh
 
 ## Word list
 
-`data/words.tsv` holds over 1,000 rare English words, one per line, with four
+`data/words.tsv` holds about 2,200 English words, one per line, with four
 tab-separated fields:
 
 ```
@@ -340,9 +340,16 @@ word<TAB>pos<TAB>definition<TAB>etymology
 `pos` is one of `n.` `v.` `adj.` `adv.` `prep.` `conj.` `interj.` `pron.`.
 The full, normative format is in `tools/lint-words --help`.
 
+Most are rare: words a well-read adult probably doesn't know. The list also
+includes every word tested by the
+[vocab-108 vocabulary test](https://taketest.xyz/vocab-108), defined in the
+sense the test uses. Those are included regardless of rarity, so a few are
+everyday words (`heap`, `whisper`).
+
 To add words, append lines and run `tools/lint-words`. It enforces, among
-other things: unique words, one sense per entry, definitions of at most 120
-characters and etymologies of at most 100.
+other things, unique words, definitions of at most 120 characters and
+etymologies of at most 100. `tools/lint-words --help` also documents the style
+rules it doesn't check, such as one sense per entry.
 
 To use your own list instead, point `ZEV_VOCAB_WORDS` at a file in the same
 format.

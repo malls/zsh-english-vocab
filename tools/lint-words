@@ -35,10 +35,11 @@ Format of data/words.tsv (normative):
 - pos is one of: n. v. adj. adv. prep. conj. interj. pron.
 - definition is at most 120 characters; etymology is at most 100 characters
   (characters, not bytes).
-- Style (documented, not linted): one sense; definitions and etymologies
-  start lowercase unless the first word is a proper noun, with no trailing
-  period; etymologies usually start "from ..."; use straight double quotes for
-  glosses; no offensive entries or proper nouns.
+- Style (documented, not linted): one sense (a closely related extension is
+  fine); definitions and etymologies start lowercase unless the first word is
+  a proper noun, with no trailing period; etymologies usually start
+  "from ..."; use straight double quotes for glosses; no offensive entries or
+  proper nouns.
 - Guarantee for readers: every line splits with "${(@ps:\t:)line}" into
   exactly 4 non-empty fields and words are unique, so readers need no
   defensive parsing.'

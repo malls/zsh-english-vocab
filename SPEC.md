@@ -179,14 +179,25 @@ Include zsh completion for the subcommands and for word arguments.
   spaces, hyphens or apostrophes. Full rules: `tools/lint-words --help`.
 - **pos** must be one of `n.`, `v.`, `adj.`, `adv.`, `prep.`, `conj.`, `interj.`,
   `pron.`
-- **Size and level:** 1000+ **rare** words only (Forrest's decision after the
-  first batch: "not particularly obscure"). The bar is that a well-read adult
-  probably does not know the word: nothing from GRE/SAT lists or everyday
-  educated prose. It must still be attested in MW (incl. Unabridged), OED,
-  Collins or AH; archaic words are allowed if labeled. The shipped list has over 1,000 entries.
-- **Source:** Claude writes the entries in batches (about 100–200 per batch). A
-  separate agent fact-checks every entry (sense, pos, etymology, attestation),
-  and Forrest spot-checks. One sense per word; definitions ≤ 120 chars;
+- **Size and level:** about 2,200 entries. The bar is **rare** (Forrest's
+  decision after finding the first batch "not particularly obscure"): a well-read adult
+  probably does not know the word, so nothing from GRE/SAT lists or everyday
+  educated prose. Every word must be attested in MW (incl. Unabridged), OED,
+  Collins or AH; archaic words are allowed if labeled.
+- **Exception: the vocab-108 test.** Every word tested by the
+  [vocab-108 vocabulary test](https://taketest.xyz/vocab-108) is in the list,
+  defined in the sense the test uses. These are exempt from the rarity bar and
+  from the family check, so some are common (`heap`, `whisper`). Do not remove
+  them.
+- **Near-synonyms are allowed:** a new word may mean nearly the same as an
+  existing one. Spelling variants and members of the same word family are not
+  (one per family), and productive suffix series (-mancy, -latry, ...) are
+  capped.
+- **Source:** Claude writes the entries in batches (about 150–200 per batch).
+  A blind rarity judge rates every candidate, a separate check catches
+  variants and word-family relatives, and a separate agent fact-checks every
+  entry (sense, pos, etymology, attestation); Forrest spot-checks. One sense
+  per entry (a closely related extension is fine); definitions ≤ 120 chars;
   etymology ≤ 100 chars.
 - No offensive or slur entries; no proper nouns.
 
